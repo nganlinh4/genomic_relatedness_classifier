@@ -8,17 +8,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import sys
+import os
 import json
+import argparse
 
-# Check arguments
-if len(sys.argv) < 3:
-    print("Usage: python evaluate_models.py <dataset> <imbalance_mode>")
-    print("dataset: cM_1, cM_3, cM_6")
-    print("imbalance_mode: zero, weighted, smote")
-    sys.exit(1)
+# CLI
+parser = argparse.ArgumentParser(description='Evaluate models for a dataset and imbalance mode')
+parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
+parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote'], help='imbalance handling mode')
+parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None, help='Evaluation device (default cuda; required to be available)')
+args = parser.parse_args()
 
-dataset = sys.argv[1]
-imbalance_mode = sys.argv[2]
+dataset = args.dataset
+imbalance_mode = args.imbalance_mode
 
 # Load data
 df = pd.read_csv(f'data/processed/merged_{dataset}.csv')
@@ -46,8 +48,18 @@ X_scaled = scaler.transform(X)
 from sklearn.model_selection import train_test_split
 X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
-# Convert to tensors
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Device selection: enforce CUDA by default; error if not available when requested
+eval_device_env = (args.eval_device or os.environ.get('EVAL_DEVICE', 'cuda')).lower()
+if eval_device_env == 'cuda':
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA was requested for evaluation but is not available. Please ensure CUDA is available.")
+    device = torch.device('cuda')
+elif eval_device_env == 'cpu':
+    raise SystemExit("CPU evaluation is disabled per project policy. Use --eval-device cuda and ensure CUDA is available.")
+else:
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA is required by default for evaluation but not available.")
+    device = torch.device('cuda')
 X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
 y_val_tensor = torch.tensor(y_val, dtype=torch.long).to(device)
 
@@ -118,62 +130,82 @@ num_classes = len(le.classes_)
 
 # Load models
 mlp = AdvancedMLP(input_size, num_classes).to(device)
-mlp.load_state_dict(torch.load(f'data/processed/mlp_{dataset}_{imbalance_mode}.pth', weights_only=True))
+mlp_path = os.path.join('models', dataset, imbalance_mode, 'mlp.pth')
+mlp.load_state_dict(torch.load(mlp_path, map_location=device))
 mlp.eval()
 
 cnn = AdvancedCNN1D(input_size, num_classes).to(device)
-cnn.load_state_dict(torch.load(f'data/processed/cnn_{dataset}_{imbalance_mode}.pth', weights_only=True))
+cnn_path = os.path.join('models', dataset, imbalance_mode, 'cnn.pth')
+cnn.load_state_dict(torch.load(cnn_path, map_location=device))
 cnn.eval()
 
 # Evaluate function
-def evaluate_model(model, X, y, model_name):
+def evaluate_model(model, X, y, model_key, pretty_name):
     with torch.no_grad():
         outputs = model(X)
+        probs = torch.softmax(outputs, dim=1).cpu().numpy()
         _, predicted = torch.max(outputs, 1)
         predicted = predicted.cpu().numpy()
         y_true = y.cpu().numpy()
 
     acc = accuracy_score(y_true, predicted)
-    f1 = f1_score(y_true, predicted, average='weighted')
+    f1_weighted = f1_score(y_true, predicted, average='weighted')
+    f1_macro = f1_score(y_true, predicted, average='macro')
 
     # AUC (One-vs-Rest)
     try:
-        auc = roc_auc_score(y_true, outputs.cpu().numpy(), multi_class='ovr', average='weighted')
-    except:
-        auc = None  # If not possible
+        # Compute only if at least 2 classes present in y_true
+        if len(np.unique(y_true)) >= 2:
+            auc_weighted = roc_auc_score(y_true, probs, multi_class='ovr', average='weighted')
+            auc_macro = roc_auc_score(y_true, probs, multi_class='ovr', average='macro')
+            auc_micro = roc_auc_score(y_true, probs, multi_class='ovr', average='micro')
+        else:
+            auc_weighted = auc_macro = auc_micro = None
+    except Exception:
+        auc_weighted = auc_macro = auc_micro = None
 
     cm = confusion_matrix(y_true, predicted)
 
-    print(f"\n{model_name} Results:")
+    print(f"\n{pretty_name} Results:")
     print(f"Accuracy: {acc:.4f}")
-    print(f"F1-Score (weighted): {f1:.4f}")
-    if auc:
-        print(f"AUC (OvR, weighted): {auc:.4f}")
+    print(f"F1-Score (weighted): {f1_weighted:.4f}")
+    if auc_weighted:
+        print(f"AUC (OvR, weighted): {auc_weighted:.4f}")
     print("Confusion Matrix:")
     print(cm)
     print("Classification Report:")
     unique_labels = np.unique(np.concatenate([y_true, predicted]))
     target_names = [le.classes_[i] for i in unique_labels]
+    cls_report = classification_report(y_true, predicted, labels=unique_labels, target_names=target_names, output_dict=True)
     print(classification_report(y_true, predicted, labels=unique_labels, target_names=target_names))
 
     # Plot confusion matrix
+    out_dir = os.path.join('reports', dataset, imbalance_mode)
+    os.makedirs(out_dir, exist_ok=True)
+    cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{imbalance_mode}.png')
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
-    plt.title(f'Confusion Matrix - {model_name}')
+    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {imbalance_mode})')
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.savefig(f'data/processed/confusion_matrix_{model_name.lower().replace(" ", "_")}_{dataset}_{imbalance_mode}.png')
+    plt.tight_layout()
+    plt.savefig(cm_path)
     plt.close()
 
     return {
         'accuracy': acc,
-        'f1_score': f1,
-        'auc': auc if auc else None
+        'f1_weighted': f1_weighted,
+        'f1_macro': f1_macro,
+        'auc_weighted': auc_weighted,
+        'auc_macro': auc_macro,
+        'auc_micro': auc_micro,
+        'confusion_matrix_path': cm_path,
+        'per_class': cls_report
     }
 
 # Evaluate DL models
-mlp_metrics = evaluate_model(mlp, X_val_tensor, y_val_tensor, f"Advanced MLP ({imbalance_mode})")
-cnn_metrics = evaluate_model(cnn, X_val_tensor, y_val_tensor, f"Advanced 1D-CNN ({imbalance_mode})")
+mlp_metrics = evaluate_model(mlp, X_val_tensor, y_val_tensor, 'mlp', f"Advanced MLP")
+cnn_metrics = evaluate_model(cnn, X_val_tensor, y_val_tensor, 'cnn', f"Advanced 1D-CNN")
 
 # Evaluate Random Forest baseline
 rf = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -193,14 +225,23 @@ print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_na
 
 rf_metrics = {
     'accuracy': acc_rf,
-    'f1_score': f1_rf,
-    'auc': None  # RF doesn't have AUC in same way
+    'f1_weighted': f1_rf,
+    'f1_macro': f1_score(y_val, y_pred_rf, average='macro'),
+    'auc_weighted': None,
+    'auc_macro': None,
+    'auc_micro': None,
+    'confusion_matrix_path': None,
+    'per_class': classification_report(y_val, y_pred_rf, output_dict=True)
 }
 
 # Save metrics to JSON
 results = {
     'dataset': dataset,
     'imbalance_mode': imbalance_mode,
+    'device': str(device),
+    'label_names': list(le.classes_),
+    'val_samples': int(len(y_val)),
+    'val_class_distribution': {le.classes_[i]: int((y_val == i).sum()) for i in range(len(le.classes_))},
     'models': {
         'MLP': mlp_metrics,
         'CNN': cnn_metrics,
@@ -209,7 +250,7 @@ results = {
 }
 
 with open(f'data/processed/evaluation_results_{dataset}_{imbalance_mode}.json', 'w') as f:
-    json.dump(results, f, indent=4)
+    json.dump(results, f, indent=2)
 
 # Feature importance plot (already done in feature_selection, but reload and show)
-print(f"\nFeature importance plot already generated in feature_selection_{dataset}.py")
+print(f"\nFeature importance plot generated in reports/{dataset}/feature_importance_{dataset}.png if feature_selection was run.")

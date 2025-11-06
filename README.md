@@ -4,22 +4,33 @@ This project builds and evaluates models to predict kinship using IBD metrics an
 
 ## Project Structure
 
-- `data/raw/` - Raw input data files
-  - `merged_info.out` - Unzipped distributional statistics file
-  - `merged_info.out.zip` - Original zipped file
-  - `model_input_with_kinship_filtered_cM_*.csv` - Kinship data for different cM thresholds (1, 3, 6)
+- `data/raw/` — Raw input data files
+  - `merged_info.out` — Unzipped distributional statistics file
+  - `merged_info.out.zip` — Original zipped file
+  - `model_input_with_kinship_filtered_cM_*.csv` — Kinship data for cM thresholds (1, 3, 6)
 
-- `data/processed/` - Processed datasets
-  - `merged_cM_*.csv` - Merged datasets ready for modeling
+- `data/processed/` — Processed datasets and intermediate artifacts
+  - `merged_cM_*.csv` — Merged datasets ready for modeling
+  - `top_features_*.pkl`, `scaler_*.pkl` — Feature selection outputs
+  - `evaluation_results_*_*.json` — Per-mode eval JSONs (temporary; consolidated after build)
 
-- `scripts/` - Python scripts for data processing
-  - `data_prep_cM_*.py` - Data preparation scripts for each cM dataset
-  - `verify.py` - Verification script
+- `models/<dataset>/<mode>/` — Trained model weights (`mlp.pth`, `cnn.pth`)
 
-- `docs/` - Documentation
-  - `plan.md` - Project plan and steps
+- `reports/<dataset>/` — Consolidated results and plots
+  - `results.json` — Machine-readable consolidated results
+  - `results.md` — Human-readable summary with links to confusion matrices
+  - `feature_importance_<dataset>.png`, `kinship_distribution_<dataset>.png`
+  - `<mode>/confusion_matrix_*.png` — Per-mode confusion matrix images
 
-- `.venv/` - Python virtual environment (created with uv)
+- `scripts/` — Orchestration and processing
+  - `run_all.py` — End-to-end pipeline runner
+  - `data_prep.py`, `eda.py`, `feature_selection.py` — Preprocessing steps
+  - `train_models.py`, `evaluate_models.py` — Train and evaluate per mode
+  - `build_report.py` — Consolidate per-mode JSONs into a single report
+
+- `docs/` — Documentation (`plan.md`)
+
+- `.venv/` — Python virtual environment (created with uv)
 
 ## Setup
 
@@ -30,19 +41,57 @@ This project builds and evaluates models to predict kinship using IBD metrics an
 
 ## Usage
 
-Run data preparation for cM_1:
+End-to-end run for a dataset (uses the repo's .venv):
 ```
-python scripts/data_prep_cM_1.py
-```
-
-Verify the output:
-```
-python scripts/verify.py
+./.venv/Scripts/python.exe scripts/run_all.py cM_1
 ```
 
-## Next Steps
+Run for all datasets:
+```
+./.venv/Scripts/python.exe scripts/run_all.py all
+```
 
-- Repeat data preparation for cM_3 and cM_6 datasets
-- Perform EDA
-- Feature selection and preprocessing
-- Model building and evaluation
+Optional flags for control (CLI overrides env vars):
+- `--epochs <int>` — number of training epochs (default 1 or `$env:TRAIN_EPOCHS`)
+- `--train-device cpu|cuda` — training device (default cuda; CUDA is required)
+- `--eval-device cpu|cuda` — evaluation device (default cuda; CUDA is required)
+
+Examples:
+```
+# 50 epochs on CPU for training, evaluate on CPU
+./.venv/Scripts/python.exe scripts/run_all.py cM_1 --epochs 50 --train-device cpu --eval-device cpu
+
+# Use environment vars instead (PowerShell):
+$env:TRAIN_EPOCHS=25; $env:TRAIN_DEVICE="cpu"; $env:EVAL_DEVICE="cpu"; \
+  ./.venv/Scripts/python.exe scripts/run_all.py cM_3
+```
+
+Outputs are consolidated under `reports/<dataset>/`:
+- `results.json` — comprehensive machine-readable results
+- `results.md` — human-readable summary with metric tables and confusion matrices
+- `feature_importance_<dataset>.png` — top feature importances
+- `kinship_distribution_<dataset>.png` — target distribution
+
+## Notes
+
+- Defaults prioritize fast prototyping with strict GPU usage: 1 epoch, CUDA-only for train/eval.
+- Model weights are stored under `models/<dataset>/<mode>/mlp.pth` and `cnn.pth`.
+- Per-mode evaluation JSONs are cleaned up after consolidation; the canonical outputs are under `reports/<dataset>/`.
+- The previous dataset-specific scripts and legacy generators were removed in favor of the generalized pipeline.
+
+### Git LFS (optional)
+
+This repo ignores large artifacts by default (`models/**`, image files under `reports/**`, and `data/raw/**`). If you prefer tracking these in Git with Large File Storage (LFS), enable LFS and add patterns like below to `.gitattributes`:
+
+```
+models/** filter=lfs diff=lfs merge=lfs -text
+reports/**/*.png filter=lfs diff=lfs merge=lfs -text
+data/raw/** filter=lfs diff=lfs merge=lfs -text
+```
+
+PowerShell (Windows):
+```
+git lfs install
+git add .gitattributes
+git commit -m "Enable LFS for models/images/raw data"
+```

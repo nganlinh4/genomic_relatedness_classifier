@@ -1,4 +1,6 @@
 import pandas as pd
+import os
+import argparse
 import pickle
 import torch
 import torch.nn as nn
@@ -10,18 +12,31 @@ from imblearn.over_sampling import SMOTE
 import numpy as np
 import sys
 
-# Check arguments
-if len(sys.argv) < 3:
-    print("Usage: python train_models.py <dataset> <imbalance_mode>")
-    print("dataset: cM_1, cM_3, cM_6")
-    print("imbalance_mode: zero, weighted, smote")
-    sys.exit(1)
+# CLI
+parser = argparse.ArgumentParser(description='Train models for a dataset and imbalance mode')
+parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
+parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote'], help='imbalance handling mode')
+parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs (default from TRAIN_EPOCHS env or 1)')
+parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None, help='Training device (default cuda; required to be available)')
+args = parser.parse_args()
 
-dataset = sys.argv[1]
-imbalance_mode = sys.argv[2]
+dataset = args.dataset
+imbalance_mode = args.imbalance_mode
+epochs = args.epochs if args.epochs is not None else int(os.environ.get('TRAIN_EPOCHS', '1'))
 
-# Check GPU
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Device selection: enforce CUDA by default; error if not available when requested
+train_device_env = (args.train_device or os.environ.get('TRAIN_DEVICE', 'cuda')).lower()
+if train_device_env == 'cuda':
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA was requested but is not available. Please ensure a CUDA-enabled PyTorch is installed and a GPU is available.")
+    device = torch.device('cuda')
+elif train_device_env == 'cpu':
+    raise SystemExit("CPU training is disabled per project policy. Use --train-device cuda and ensure CUDA is available.")
+else:
+    # Default to strict CUDA requirement
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA is required by default but not available.")
+    device = torch.device('cuda')
 print(f"Using device: {device}, Dataset: {dataset}, Imbalance: {imbalance_mode}")
 
 # Load data
@@ -136,9 +151,9 @@ class AdvancedCNN1D(nn.Module):
         return x
 
 # Train function
-def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs=50):
-    if imbalance_mode in ['weighted', 'smote']:
-        # Compute class weights
+def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs=1):
+    # Use weighted loss only in 'weighted' mode; avoid double-compensation in 'smote'
+    if imbalance_mode == 'weighted':
         class_counts = torch.bincount(y_train)
         total_samples = len(y_train)
         num_classes = len(class_counts)
@@ -182,17 +197,19 @@ def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs
 # Train Advanced MLP
 print("Training Advanced MLP...")
 mlp = AdvancedMLP(len(top_features), num_classes)
-train_model(mlp, train_loader, val_loader, y_train, imbalance_mode)
+train_model(mlp, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
 
-# Save MLP
-torch.save(mlp.state_dict(), f'data/processed/mlp_{dataset}_{imbalance_mode}.pth')
+# Save MLP under models/<dataset>/<mode>/
+models_dir = os.path.join('models', dataset, imbalance_mode)
+os.makedirs(models_dir, exist_ok=True)
+torch.save(mlp.state_dict(), os.path.join(models_dir, 'mlp.pth'))
 
 # Train Advanced CNN
 print("Training Advanced 1D-CNN...")
 cnn = AdvancedCNN1D(len(top_features), num_classes)
-train_model(cnn, train_loader, val_loader, y_train, imbalance_mode)
+train_model(cnn, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
 
-# Save CNN
-torch.save(cnn.state_dict(), f'data/processed/cnn_{dataset}_{imbalance_mode}.pth')
+# Save CNN under models/<dataset>/<mode>/
+torch.save(cnn.state_dict(), os.path.join(models_dir, 'cnn.pth'))
 
 print("Models saved.")

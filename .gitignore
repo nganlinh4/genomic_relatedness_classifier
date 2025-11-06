@@ -59,3 +59,12 @@ logs/
 
 # But ignore any processed temp files if any
 # Keep data files tracked
+
+# Large artifacts and generated outputs
+models/**
+reports/**/*.png
+reports/**/*.jpg
+reports/**/*.jpeg
+
+# Raw data (usually large, reproducible from source)
+data/raw/**
