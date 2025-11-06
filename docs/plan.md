@@ -78,4 +78,6 @@ Notes on class imbalance:
 #### Step 6: Repeat
 
 *   Execute Steps 1-5 for all three datasets: `cM_1`, `cM_3`, and `cM_6`.
-*   Each dataset produces a consolidated report under `reports/<dataset>/` (`results.json` and `results.md`). Cross-dataset comparisons are kept out of the single reports by design.
+*   Each dataset produces a consolidated report under `reports/<dataset>/` (`results.json`, `results.md`, `results.pdf`), and a Korean variant (`results_KR.md`, `results_KR.pdf`). Cross-dataset comparisons are kept out of the single reports by design.
+
+Note: A Korean version of this plan is available at `docs/plan_KR.md`.

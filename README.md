@@ -36,28 +36,31 @@ This project builds and evaluates models to predict kinship using IBD metrics an
 
 ```mermaid
 graph TD
-  A[Repo root] --> B[data/]
+  A[Repo root]
+  A --> B[data/]
   B --> B1[raw/ — input CSVs and merged_info.out]
   B --> B2[processed/ — merged_{dataset}.csv, top_features_{dataset}.pkl, scaler_{dataset}.pkl, evaluation_results_*.json]
 
   A --> C[scripts/ — pipeline]
   subgraph SCRIPTS [scripts]
-    C1[data_prep.py — parse merged_info.out and join with labeled pairs → merged_{dataset}.csv]
-    C2[eda.py — plot kinship target distribution → reports/{dataset}/kinship_distribution_{dataset}.png]
-    C3[feature_selection.py — RF importance, save top_features & scaler, plot top-20]
-    C4[train_models.py — train MLP and 1D-CNN per imbalance mode; save weights]
-    C5[evaluate_models.py — evaluate models; robust multiclass AUC; save confusion matrices + per-mode JSON]
-    C6[build_report.py — aggregate per-mode JSONs → reports/{dataset}/results.{json,md} (+ optional PDF)]
+    C1[data_prep.py — parse merged_info.out + join labeled pairs → merged_{dataset}.csv]
+    C2[eda.py — kinship distribution plot → reports/{dataset}/kinship_distribution_{dataset}.png]
+    C3[feature_selection.py — RF importance; save top_features & scaler; plot]
+    C4[train_models.py — train MLP/1D-CNN per imbalance mode]
+    C5[evaluate_models.py — evaluate; robust OvR AUC; save confusion matrices + per-mode JSON]
+    C6[build_report.py — aggregate → reports/{dataset}/results(.json/.md/.pdf) + results_KR(.md/.pdf)]
     C7[run_all.py — orchestrate full pipeline for one dataset or all]
   end
 
-  A --> D[models/ — generated model weights per dataset/mode (git-ignored)]
-  A --> E[reports/ — generated consolidated results and plots (git-ignored)]
-  E --> E1[{dataset}/results.json, results.md, results.pdf?]
+  A --> D[models/ — model weights per dataset/mode (git-ignored)]
+  A --> E[reports/ — consolidated results and plots (git-ignored)]
+  E --> E1[{dataset}/results(.md/.pdf), results_KR(.md/.pdf)]
   E --> E2[{dataset}/feature_importance_{dataset}.png, kinship_distribution_{dataset}.png]
   E --> E3[{dataset}/{mode}/confusion_matrix_*.png]
-  A --> F[docs/plan.md — design notes and roadmap]
+  A --> F[docs/plan.md, docs/plan_KR.md]
 ```
+
+Note: A Korean version of this README is available at `README_KR.md`.
 
 ## Setup
 

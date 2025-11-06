@@ -205,11 +205,22 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     out_dir = os.path.join('reports', dataset, imbalance_mode)
     os.makedirs(out_dir, exist_ok=True)
     cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{imbalance_mode}.png')
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
-    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {imbalance_mode})')
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
+    plt.figure(figsize=(12, 10), dpi=200)
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt='d',
+        cmap='Blues',
+        xticklabels=le.classes_,
+        yticklabels=le.classes_,
+        cbar=False,
+        annot_kws={"size": 12}
+    )
+    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {imbalance_mode})', fontsize=14)
+    plt.xlabel('Predicted', fontsize=12)
+    plt.ylabel('True', fontsize=12)
+    plt.xticks(rotation=45, ha='right', fontsize=10)
+    plt.yticks(rotation=0, fontsize=10)
     plt.tight_layout()
     plt.savefig(cm_path)
     plt.close()
@@ -266,11 +277,22 @@ print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_na
 out_dir_mode = os.path.join('reports', dataset, imbalance_mode)
 os.makedirs(out_dir_mode, exist_ok=True)
 cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{imbalance_mode}.png')
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm_rf, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
-plt.title(f'Confusion Matrix - RandomForest ({dataset} / {imbalance_mode})')
-plt.xlabel('Predicted')
-plt.ylabel('True')
+plt.figure(figsize=(12, 10), dpi=200)
+sns.heatmap(
+    cm_rf,
+    annot=True,
+    fmt='d',
+    cmap='Blues',
+    xticklabels=le.classes_,
+    yticklabels=le.classes_,
+    cbar=False,
+    annot_kws={"size": 12}
+)
+plt.title(f'Confusion Matrix - RandomForest ({dataset} / {imbalance_mode})', fontsize=14)
+plt.xlabel('Predicted', fontsize=12)
+plt.ylabel('True', fontsize=12)
+plt.xticks(rotation=45, ha='right', fontsize=10)
+plt.yticks(rotation=0, fontsize=10)
 plt.tight_layout()
 plt.savefig(cm_rf_path)
 plt.close()
