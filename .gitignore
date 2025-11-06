@@ -66,5 +66,8 @@ reports/**/*.png
 reports/**/*.jpg
 reports/**/*.jpeg
 
+# Processed CSVs (regenerable)
+data/processed/merged_cM_*.csv
+
 # Raw data (usually large, reproducible from source)
 data/raw/**
