@@ -234,25 +234,55 @@ rf = RandomForestClassifier(n_estimators=100, random_state=42)
 rf.fit(X_train, y_train)
 y_pred_rf = rf.predict(X_val)
 
+# Accuracy and F1
 acc_rf = accuracy_score(y_val, y_pred_rf)
-f1_rf = f1_score(y_val, y_pred_rf, average='weighted')
+f1_rf_weighted = f1_score(y_val, y_pred_rf, average='weighted')
+f1_rf_macro = f1_score(y_val, y_pred_rf, average='macro')
 
+# AUC using predict_proba (robustly fill missing class columns)
+try:
+    proba_partial = rf.predict_proba(X_val)  # shape: [n, len(rf.classes_)]
+    rf_classes = rf.classes_.astype(int)
+    probs_full = np.zeros((X_val.shape[0], num_classes), dtype=float)
+    for idx_c, c in enumerate(rf_classes):
+        probs_full[:, c] = proba_partial[:, idx_c]
+    auc_w_rf, auc_m_rf, auc_micro_rf = _safe_multiclass_auc(y_val, probs_full, num_classes)
+except Exception:
+    auc_w_rf = auc_m_rf = auc_micro_rf = None
+
+# Confusion matrix and report
+cm_rf = confusion_matrix(y_val, y_pred_rf)
 print("\nRandom Forest Baseline Results:")
 print(f"Accuracy: {acc_rf:.4f}")
-print(f"F1-Score (weighted): {f1_rf:.4f}")
+print(f"F1-Score (weighted): {f1_rf_weighted:.4f}")
+if auc_w_rf is not None:
+    print(f"AUC (OvR, weighted): {auc_w_rf:.4f}")
 print("Classification Report:")
 unique_labels_rf = np.unique(np.concatenate([y_val, y_pred_rf]))
 target_names_rf = [le.classes_[i] for i in unique_labels_rf]
 print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_names=target_names_rf))
 
+# Plot confusion matrix for RF
+out_dir_mode = os.path.join('reports', dataset, imbalance_mode)
+os.makedirs(out_dir_mode, exist_ok=True)
+cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{imbalance_mode}.png')
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_rf, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+plt.title(f'Confusion Matrix - RandomForest ({dataset} / {imbalance_mode})')
+plt.xlabel('Predicted')
+plt.ylabel('True')
+plt.tight_layout()
+plt.savefig(cm_rf_path)
+plt.close()
+
 rf_metrics = {
     'accuracy': acc_rf,
-    'f1_weighted': f1_rf,
-    'f1_macro': f1_score(y_val, y_pred_rf, average='macro'),
-    'auc_weighted': None,
-    'auc_macro': None,
-    'auc_micro': None,
-    'confusion_matrix_path': None,
+    'f1_weighted': f1_rf_weighted,
+    'f1_macro': f1_rf_macro,
+    'auc_weighted': auc_w_rf,
+    'auc_macro': auc_m_rf,
+    'auc_micro': auc_micro_rf,
+    'confusion_matrix_path': cm_rf_path,
     'per_class': classification_report(y_val, y_pred_rf, output_dict=True)
 }
 

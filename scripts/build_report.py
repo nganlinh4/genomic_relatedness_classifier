@@ -189,18 +189,29 @@ def main():
         f.write("\n".join(lines))
     print(f"Wrote Markdown report to {md_path}")
 
-    # Optionally convert Markdown to PDF using npx md-to-pdf if available
+    # Optionally convert Markdown to PDF using npx md-to-pdf if available (no output flags)
     try:
         npx_path = shutil.which('npx')
         if npx_path:
             pdf_path = os.path.join(out_dir, 'results.pdf')
-            print("Converting Markdown to PDF via npx md-to-pdf...")
-            # Example: npx md-to-pdf reports/<dataset>/results.md --output reports/<dataset>/results.pdf
-            subprocess.run([npx_path, 'md-to-pdf', md_path, '--output', pdf_path], check=False)
+            default_pdf = os.path.splitext(md_path)[0] + '.pdf'
+            print("Converting Markdown to PDF via npx md-to-pdf (no output flag)...")
+            # Always call without any output flag; most versions write <md>.pdf next to the input
+            subprocess.run([npx_path, 'md-to-pdf', md_path], check=False)
+            # If default PDF exists, rename/move to results.pdf
+            if os.path.exists(default_pdf):
+                try:
+                    if default_pdf != pdf_path:
+                        # Remove existing target if present, then move
+                        if os.path.exists(pdf_path):
+                            os.remove(pdf_path)
+                        shutil.move(default_pdf, pdf_path)
+                except Exception:
+                    pass
             if os.path.exists(pdf_path):
                 print(f"Wrote PDF report to {pdf_path}")
             else:
-                print("md-to-pdf did not produce a PDF. You can run it manually if needed.")
+                print("md-to-pdf did not produce a PDF. You can run it manually: npx md-to-pdf <path-to-results.md>")
         else:
             print("npx not found; skipping PDF generation. Install Node.js and run 'npx md-to-pdf' to produce PDF.")
     except Exception as e:
