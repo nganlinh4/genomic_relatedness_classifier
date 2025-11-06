@@ -4,31 +4,28 @@ IBD 지표와 분포 통계(feature)로 친족 관계를 예측하는 모델을 
 
 ## 프로젝트 구조
 
-```mermaid
-graph TD
-  A[Repo root]
-  A --> B[data/]
-  B --> B1[raw/ — 입력 CSV 및 merged_info.out]
-  B --> B2[processed/ — merged_{dataset}.csv, top_features_{dataset}.pkl, scaler_{dataset}.pkl, evaluation_results_*.json]
+- `data/raw/` — 입력 원본 데이터
+  - `model_input_with_kinship_filtered_cM_*.csv` — cM 임계값(1, 3, 6)별 라벨 데이터
+  - `merged_info.out` (및 `merged_info.out.zip`) — 분포 통계 원본
 
-  A --> C[scripts/ — 파이프라인]
-  subgraph SCRIPTS [scripts]
-    C1[data_prep.py — merged_info.out 파싱 + 라벨 CSV 병합 → merged_{dataset}.csv]
-    C2[eda.py — 타깃(kinship) 분포 플롯 → reports/{dataset}/kinship_distribution_{dataset}.png]
-    C3[feature_selection.py — RF 중요도; 상위 특성/스케일러 저장; 플롯]
-    C4[train_models.py — MLP/1D-CNN 학습(불균형 모드별)]
-    C5[evaluate_models.py — 평가; 강건 OvR AUC; 혼동 행렬 + per-mode JSON 저장]
-    C6[build_report.py — 통합 → reports/{dataset}/results(.json/.md/.pdf), results_KR(.md/.pdf)]
-    C7[run_all.py — 단일/전체 데이터셋 파이프라인]
-  end
+- `data/processed/` — 전처리/중간 산출물
+  - `merged_cM_*.csv` — 모델 입력용 병합 데이터
+  - `top_features_*.pkl`, `scaler_*.pkl` — 특성 선택/스케일러
+  - `evaluation_results_*_*.json` — 모드별 평가 JSON (통합 후에는 참조용)
 
-  A --> D[models/ — 데이터셋/모드별 모델 가중치 (git-ignored)]
-  A --> E[reports/ — 통합 리포트와 플롯 (git-ignored)]
-  E --> E1[{dataset}/results(.md/.pdf), results_KR(.md/.pdf)]
-  E --> E2[{dataset}/feature_importance_{dataset}.png, kinship_distribution_{dataset}.png]
-  E --> E3[{dataset}/{mode}/confusion_matrix_*.png]
-  A --> F[docs/plan.md, docs/plan_KR.md]
-```
+- `models/<dataset>/<mode>/` — 학습된 모델 가중치(`mlp.pth`, `cnn.pth`) — git 무시
+
+- `reports/<dataset>/` — 통합 리포트와 플롯 — git 무시
+  - `results.json`, `results.md`, `results.pdf`
+  - `results_KR.md`, `results_KR.pdf`
+  - `feature_importance_<dataset>.png`, `kinship_distribution_<dataset>.png`
+  - `<mode>/confusion_matrix_*.png` — 모드/모델별 혼동 행렬 이미지
+
+- `scripts/` — 파이프라인 스크립트
+  - `run_all.py`, `data_prep.py`, `eda.py`, `feature_selection.py`
+  - `train_models.py`, `evaluate_models.py`, `build_report.py`
+
+- `docs/` — 문서 (`plan.md`, `plan_KR.md`)
 
 ## 준비 (Windows / PowerShell)
 

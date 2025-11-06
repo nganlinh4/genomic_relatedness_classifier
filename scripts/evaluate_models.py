@@ -46,6 +46,7 @@ X_scaled = scaler.transform(X)
 
 # Split into train/val (same as training, but since no test, evaluate on val)
 from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
 X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
 # Device selection: enforce CUDA by default; error if not available when requested
@@ -316,12 +317,32 @@ results = {
     'label_names': list(le.classes_),
     'val_samples': int(len(y_val)),
     'val_class_distribution': {le.classes_[i]: int((y_val == i).sum()) for i in range(len(le.classes_))},
+    # Add train set counts before and after sampling (SMOTE affects train only)
+    'train_samples_before': int(len(y_train)),
+    'train_class_distribution_before': {le.classes_[i]: int((y_train == i).sum()) for i in range(len(le.classes_))},
+    'train_samples_after': None,
+    'train_class_distribution_after': None,
     'models': {
         'MLP': mlp_metrics,
         'CNN': cnn_metrics,
         'RandomForest': rf_metrics
     }
 }
+
+# Compute post-sampling train counts for reporting (mirrors training policy)
+try:
+    if imbalance_mode == 'smote':
+        sm = SMOTE(k_neighbors=1, random_state=42)
+        _, y_train_res = sm.fit_resample(X_train, y_train)
+        results['train_samples_after'] = int(len(y_train_res))
+        results['train_class_distribution_after'] = {le.classes_[i]: int((y_train_res == i).sum()) for i in range(len(le.classes_))}
+    else:
+        results['train_samples_after'] = int(len(y_train))
+        results['train_class_distribution_after'] = results['train_class_distribution_before']
+except Exception:
+    # If SMOTE or counting fails, fall back gracefully
+    results['train_samples_after'] = int(len(y_train))
+    results['train_class_distribution_after'] = results['train_class_distribution_before']
 
 with open(f'data/processed/evaluation_results_{dataset}_{imbalance_mode}.json', 'w') as f:
     json.dump(results, f, indent=2)
