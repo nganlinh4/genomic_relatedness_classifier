@@ -158,11 +158,11 @@ class AdvancedCNN1D(nn.Module):
 def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs=1):
     # Use weighted loss only in 'weighted' mode; avoid double-compensation in 'smote'
     if imbalance_mode == 'weighted':
-        class_counts = torch.bincount(y_train)
-        total_samples = len(y_train)
-        num_classes = len(class_counts)
-        class_weights = total_samples / (num_classes * class_counts.float())
-        class_weights = class_weights.to(device)
+        # Safe weights: include all classes and avoid division by zero
+        cc = torch.bincount(y_train, minlength=num_classes).to(torch.float32)
+        cc = torch.clamp(cc, min=1.0)
+        total = cc.sum()
+        class_weights = (total / (len(cc) * cc)).to(device)
         criterion = nn.CrossEntropyLoss(weight=class_weights)
     else:
         criterion = nn.CrossEntropyLoss()
