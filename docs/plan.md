@@ -71,6 +71,10 @@ For both models, calculate and present the following metrics:
 *   Confusion Matrix
 *   Feature Importance Plot (from the Random Forest)
 
+Notes on class imbalance:
+- The 'zero' mode (no rebalancing) is a baseline and may be biased toward the majority class; prioritize macro/weighted metrics and per-class results.
+- The 'weighted' mode applies class-weighted loss; the 'smote' mode oversamples the training split (validation remains original).
+
 #### Step 6: Repeat
 
 *   Execute Steps 1-5 for all three datasets: `cM_1`, `cM_3`, and `cM_6`.

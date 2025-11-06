@@ -79,6 +79,13 @@ Outputs are consolidated under `reports/<dataset>/`:
 - Per-mode evaluation JSONs are cleaned up after consolidation; the canonical outputs are under `reports/<dataset>/`.
 - The previous dataset-specific scripts and legacy generators were removed in favor of the generalized pipeline.
 
+### Interpreting results and class imbalance
+
+- Many datasets here are highly imbalanced (e.g., majority class > 80%).
+- 'zero' mode performs no rebalancing and can appear strong on accuracy while failing minority classes — treat as a baseline only.
+- 'weighted' mode (class-weighted loss) and 'smote' mode (oversampling on train split) address imbalance differently; review macro/weighted F1 and per-class metrics.
+- AUC is computed robustly per class (OvR) with safe fallbacks, so it will always be numeric; prefer macro/weighted AUC for imbalanced settings.
+
 ### Git LFS (optional)
 
 This repo ignores large artifacts by default (`models/**`, image files under `reports/**`, and `data/raw/**`). If you prefer tracking these in Git with Large File Storage (LFS), enable LFS and add patterns like below to `.gitattributes`:

@@ -12,6 +12,10 @@ from imblearn.over_sampling import SMOTE
 import numpy as np
 import sys
 
+# Make CUDA behavior deterministic and more stable on Windows; disable cuDNN if needed
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+
 # CLI
 parser = argparse.ArgumentParser(description='Train models for a dataset and imbalance mode')
 parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
@@ -75,17 +79,17 @@ else:
     X_train_smote, y_train_smote = X_train, y_train
     print(f"Training samples: {len(y_train)}")
 
-# Convert to tensors
-X_train = torch.tensor(X_train_smote, dtype=torch.float32).to(device)
-X_val = torch.tensor(X_val, dtype=torch.float32).to(device)
-y_train = torch.tensor(y_train_smote, dtype=torch.long).to(device)
-y_val = torch.tensor(y_val, dtype=torch.long).to(device)
+# Convert to tensors (keep on CPU; move per-batch during training for stability)
+X_train = torch.tensor(X_train_smote, dtype=torch.float32)
+X_val = torch.tensor(X_val, dtype=torch.float32)
+y_train = torch.tensor(y_train_smote, dtype=torch.long)
+y_val = torch.tensor(y_val, dtype=torch.long)
 
 # DataLoader
 train_dataset = TensorDataset(X_train, y_train)
 val_dataset = TensorDataset(X_val, y_val)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=32, pin_memory=True)
 
 # Advanced MLP Model
 class AdvancedMLP(nn.Module):
@@ -166,33 +170,63 @@ def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
     model.to(device)
 
-    for epoch in range(epochs):
+    def _run_epoch():
         model.train()
-        train_loss = 0
+        train_loss = 0.0
         for X_batch, y_batch in train_loader:
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
             optimizer.zero_grad()
             outputs = model(X_batch)
             loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+        return train_loss / max(1, len(train_loader))
 
-        scheduler.step()
-
+    def _eval_epoch():
         model.eval()
-        val_loss = 0
+        val_loss = 0.0
         correct = 0
         total = 0
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
+                X_batch = X_batch.to(device, non_blocking=True)
+                y_batch = y_batch.to(device, non_blocking=True)
                 outputs = model(X_batch)
                 loss = criterion(outputs, y_batch)
                 val_loss += loss.item()
                 _, predicted = torch.max(outputs.data, 1)
                 total += y_batch.size(0)
                 correct += (predicted == y_batch).sum().item()
+        return val_loss / max(1, len(val_loader)), (100.0 * correct / max(1, total))
 
-        print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss/len(train_loader):.4f}, Val Loss: {val_loss/len(val_loader):.4f}, Val Acc: {100*correct/total:.2f}%")
+    for epoch in range(epochs):
+        try:
+            tr_loss = _run_epoch()
+        except RuntimeError as e:
+            if 'CUDA' in str(e).upper() and torch.backends.cudnn.enabled:
+                # Retry once with cuDNN disabled to avoid Windows/cuDNN kernel issues
+                print("Warning: CUDA runtime error encountered; disabling cuDNN and retrying this epoch once.")
+                torch.backends.cudnn.enabled = False
+                tr_loss = _run_epoch()
+            else:
+                raise
+
+        scheduler.step()
+
+        try:
+            v_loss, v_acc = _eval_epoch()
+        except RuntimeError as e:
+            if 'CUDA' in str(e).upper() and torch.backends.cudnn.enabled:
+                print("Warning: CUDA runtime error during eval; disabling cuDNN and retrying.")
+                torch.backends.cudnn.enabled = False
+                v_loss, v_acc = _eval_epoch()
+            else:
+                raise
+
+        torch.cuda.synchronize()
+        print(f"Epoch {epoch+1}/{epochs}, Train Loss: {tr_loss:.4f}, Val Loss: {v_loss:.4f}, Val Acc: {v_acc:.2f}%")
 
 # Train Advanced MLP
 print("Training Advanced MLP...")

@@ -65,6 +65,9 @@ models/**
 reports/**/*.png
 reports/**/*.jpg
 reports/**/*.jpeg
+reports/**/*.json
+reports/**/*.md
+data/processed/evaluation_results_*.json
 
 # Processed CSVs (regenerable)
 data/processed/merged_cM_*.csv

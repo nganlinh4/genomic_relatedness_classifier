@@ -68,6 +68,22 @@ def main():
     if label_names:
         lines.append(f"Labels: {', '.join(label_names)}\n")
 
+    # Class imbalance note (use any available distribution)
+    any_mode_key = next(iter(consolidated['modes'])) if consolidated['modes'] else None
+    vcd_any = consolidated['modes'][any_mode_key].get('val_class_distribution', {}) if any_mode_key else {}
+    if vcd_any:
+        total = sum(int(v) for v in vcd_any.values())
+        maj = max(int(v) for v in vcd_any.values()) if vcd_any else 0
+        share = (maj / total) if total else 0
+        lines.append("## Note on class imbalance\n")
+        if share >= 0.8:
+            lines.append(f"Validation set is severely imbalanced (majority class ≈ {share*100:.1f}%). Metrics from 'zero' mode are likely biased toward the majority class. Prefer macro/weighted metrics and inspect per-class results. Consider 'weighted' or 'smote' modes for more balanced learning.\n")
+        elif share >= 0.6:
+            lines.append(f"Validation set is imbalanced (majority class ≈ {share*100:.1f}%). 'Zero' mode can be biased; review macro/weighted metrics and per-class metrics.\n")
+        else:
+            lines.append("Some class imbalance may still exist. Review macro/weighted metrics alongside accuracy.\n")
+        lines.append("\n")
+
     for mode in modes:
         if mode not in consolidated['modes']:
             continue
@@ -78,6 +94,14 @@ def main():
         if vcd:
             parts = [f"{k}={v}" for k, v in vcd.items()]
             lines.append(f"Class distribution: {', '.join(parts)}\n")
+
+        # Mode caveats
+        if mode == 'zero':
+            lines.append("> Caveat: 'zero' mode uses no rebalancing and may favor the majority class; treat results as a baseline.\n")
+        elif mode == 'weighted':
+            lines.append("> Note: 'weighted' mode applies class-weighted loss to mitigate imbalance; with very few epochs it may underperform transiently.\n")
+        elif mode == 'smote':
+            lines.append("> Note: 'smote' mode oversamples the training split; evaluation remains on the original (possibly imbalanced) validation set.\n")
 
         # Table header
         lines.append("| Model | Accuracy | F1 (weighted) | F1 (macro) | AUC (weighted) | AUC (macro) | AUC (micro) |")
