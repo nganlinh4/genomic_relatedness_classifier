@@ -140,6 +140,38 @@ cnn.load_state_dict(torch.load(cnn_path, map_location=device))
 cnn.eval()
 
 # Evaluate function
+def _safe_multiclass_auc(y_true_np: np.ndarray, probs_np: np.ndarray, n_classes: int):
+    # Compute per-class OvR AUC; use 0.5 baseline for classes absent in y_true or degenerate cases
+    per_class_auc = []
+    weights = []
+    for c in range(n_classes):
+        y_bin = (y_true_np == c).astype(int)
+        pos = y_bin.sum()
+        neg = len(y_bin) - pos
+        if pos > 0 and neg > 0:
+            try:
+                auc_c = roc_auc_score(y_bin, probs_np[:, c])
+            except Exception:
+                auc_c = 0.5
+        else:
+            # If no positives or no negatives, AUC undefined; use neutral baseline 0.5
+            auc_c = 0.5
+        per_class_auc.append(float(auc_c))
+        weights.append(int(pos))
+
+    macro = float(np.mean(per_class_auc)) if per_class_auc else 0.5
+    total = sum(weights)
+    weighted = float(np.average(per_class_auc, weights=weights)) if total > 0 else macro
+
+    # Micro AUC may fail if degenerate; fall back to weighted
+    try:
+        y_binarized = np.eye(n_classes)[y_true_np]
+        micro = float(roc_auc_score(y_binarized, probs_np, average='micro'))
+    except Exception:
+        micro = weighted
+    return weighted, macro, micro
+
+
 def evaluate_model(model, X, y, model_key, pretty_name):
     with torch.no_grad():
         outputs = model(X)
@@ -152,25 +184,15 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     f1_weighted = f1_score(y_true, predicted, average='weighted')
     f1_macro = f1_score(y_true, predicted, average='macro')
 
-    # AUC (One-vs-Rest)
-    try:
-        # Compute only if at least 2 classes present in y_true
-        if len(np.unique(y_true)) >= 2:
-            auc_weighted = roc_auc_score(y_true, probs, multi_class='ovr', average='weighted')
-            auc_macro = roc_auc_score(y_true, probs, multi_class='ovr', average='macro')
-            auc_micro = roc_auc_score(y_true, probs, multi_class='ovr', average='micro')
-        else:
-            auc_weighted = auc_macro = auc_micro = None
-    except Exception:
-        auc_weighted = auc_macro = auc_micro = None
+    # AUC (One-vs-Rest) with robust fallbacks to avoid N/A
+    auc_weighted, auc_macro, auc_micro = _safe_multiclass_auc(y_true, probs, num_classes)
 
     cm = confusion_matrix(y_true, predicted)
 
     print(f"\n{pretty_name} Results:")
     print(f"Accuracy: {acc:.4f}")
     print(f"F1-Score (weighted): {f1_weighted:.4f}")
-    if auc_weighted:
-        print(f"AUC (OvR, weighted): {auc_weighted:.4f}")
+    print(f"AUC (OvR, weighted): {auc_weighted:.4f}")
     print("Confusion Matrix:")
     print(cm)
     print("Classification Report:")

@@ -1,24 +1,24 @@
 ### Project Plan: Kinship Classification
 
-The goal is to build and evaluate models that predict kinship. The features will be a combination of 6 core IBD metrics and a large set of distributional stats. We will create three separate datasets (`cM_1`, `cM_3`, `cM_6`) and compare model performance on each.
+The goal is to build and evaluate models that predict kinship. The features are a combination of 6 core IBD metrics plus a large set of distributional statistics parsed from `merged_info.out`. We create three separate datasets (`cM_1`, `cM_3`, `cM_6`) and generate a consolidated report per dataset (no cross-dataset comparison in a single report).
 
 ---
 
 #### Step 1: Data Preparation (for each cM dataset)
 
 1.  **Process `merged_info.out`:**
-    *   Unzip and load the file.
-    *   **Transpose** it so that sample pairs are rows and distributional features (mean, std, percentiles, etc.) are columns.
-    *   Convert it into a pandas DataFrame.
+    *   Unzip and load the file (if needed).
+    *   Parse each line as: `[pair] allChr <key1>:<val1> <key2>:<val2> ...` and build a row per pair with distributional features as columns (mean, std, percentiles, etc.).
+    *   Produce a pandas DataFrame with one row per `pair` and columns for all parsed statistics (no transpose step).
 
 2.  **Process `model_input_with_kinship_*.csv`:**
-    *   Load the `model_input_with_kinship_filtered_cM_1.csv` file.
+    *   Load the `model_input_with_kinship_filtered_<dataset>.csv` file.
     *   **Select only the essential columns:** `pair`, `IBD1_len`, `IBD2_len`, `R1`, `R2`, `Num_Segs`, `Total_len`, and the target column `kinship`.
     *   Discard all other columns from this file (`target1`, `target2`, `real_kinship`, `kinship_considered_hs`).
 
 3.  **Merge Datasets:**
-    *   Merge the processed `merged_info` DataFrame with the selected columns from the `model_input` DataFrame, using the `pair` column as the key.
-    *   **Deliverable:** Share this final merged dataset.
+    *   Merge the parsed `merged_info` statistics with the selected columns from the `model_input` file on `pair`.
+    *   **Deliverable:** `data/processed/merged_<dataset>.csv` (regenerable and ignored by Git).
 
 #### Step 2: Exploratory Data Analysis (EDA)
 
@@ -36,25 +36,30 @@ The goal is to build and evaluate models that predict kinship. The features will
     *   Apply `StandardScaler` to all feature (`X`) columns. This is essential.
 
 3.  **Select Best Features:**
-    *   **Primary Method:** Use a **`RandomForestClassifier`** to get feature importance scores from the combined feature set.
-    *   Select the top-ranked features to use for the deep learning models.
+    *   Use a **`RandomForestClassifier`** to get feature importance scores from the combined feature set.
+    *   Select the top-ranked features (top 50) to use for the deep learning models.
+    *   Fit and persist a `StandardScaler` for the selected features.
 
-#### Step 4: Model Building & Training
+#### Step 4: Model Building & Training (CUDA-only)
 
-*This remains a multi-class classification problem. Due to severe class imbalance, apply SMOTE oversampling to balance training data, and use advanced model architectures for better performance.*
+This is a multi-class classification problem. We train on GPU (CUDA required). We evaluate three imbalance modes per dataset:
+
+- `zero`: No class weighting, no resampling.
+- `weighted`: Class-weighted loss (CrossEntropy with class weights).
+- `smote`: SMOTE applied on the training split (no class weights to avoid double-compensation).
 
 1.  **Data Oversampling:**
     *   Apply SMOTE (Synthetic Minority Oversampling Technique) to the training set to generate synthetic samples for minority classes, balancing the dataset.
 
 2.  **Model A: Advanced Multi-Layer Perceptron (MLP)**
     *   **Architecture:** Deeper network with 4 hidden layers (256, 128, 64, 32 neurons), BatchNorm, Dropout (0.5), ReLU activations.
-    *   **Input:** Oversampled, scaled, selected features.
-    *   **Output:** Dense layer with softmax and weighted categorical crossentropy loss.
+    *   **Input:** Scaled, selected features (oversampled only under `smote`).
+    *   **Loss:** CrossEntropy; class-weighted only under `weighted`.
 
 3.  **Model B: Advanced 1D Convolutional Neural Network (1D-CNN)**
     *   **Architecture:** Deeper CNN with 3 conv blocks (increasing filters: 32, 64, 128), each with Conv1d, BatchNorm, ReLU, MaxPool; followed by 2 dense layers (128, 64) with Dropout.
-    *   **Input:** Oversampled, scaled, selected features.
-    *   **Output:** Dense layer with softmax and weighted categorical crossentropy loss.
+    *   **Input:** Scaled, selected features reshaped to 1D (oversampled only under `smote`).
+    *   **Loss:** CrossEntropy; class-weighted only under `weighted`.
 
 #### Step 5: Evaluation and Reporting
 
@@ -62,11 +67,11 @@ For both models, calculate and present the following metrics:
 
 *   Accuracy (ACC)
 *   F1-Score (weighted average)
-*   AUC Score (One-vs-Rest)
+*   AUC Score (One-vs-Rest): weighted, macro, micro — computed robustly with fallbacks (never N/A)
 *   Confusion Matrix
 *   Feature Importance Plot (from the Random Forest)
 
 #### Step 6: Repeat
 
 *   Execute Steps 1-5 for all three datasets: `cM_1`, `cM_3`, and `cM_6`.
-*   The final report will compare the results across the three datasets.
+*   Each dataset produces a consolidated report under `reports/<dataset>/` (`results.json` and `results.md`). Cross-dataset comparisons are kept out of the single reports by design.
