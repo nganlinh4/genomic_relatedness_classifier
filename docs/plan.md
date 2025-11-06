@@ -41,16 +41,20 @@ The goal is to build and evaluate models that predict kinship. The features will
 
 #### Step 4: Model Building & Training
 
-*This remains a multi-class classification problem.*
+*This remains a multi-class classification problem. Due to severe class imbalance, apply SMOTE oversampling to balance training data, and use advanced model architectures for better performance.*
 
-1.  **Model A: Multi-Layer Perceptron (MLP)**
-    *   **Input:** The scaled, selected features from Step 3.
-    *   **Output Layer:** `Dense` layer with `softmax` activation and `categorical_crossentropy` loss.
+1.  **Data Oversampling:**
+    *   Apply SMOTE (Synthetic Minority Oversampling Technique) to the training set to generate synthetic samples for minority classes, balancing the dataset.
 
-2.  **Model B: 1D Convolutional Neural Network (1D-CNN)**
-    *   This is still a strong candidate because the sequential percentile features from `merged_info` are included in the feature set.
-    *   **Input:** The scaled, selected features.
-    *   **Output Layer:** `Dense` layer with `softmax` activation and `categorical_crossentropy` loss.
+2.  **Model A: Advanced Multi-Layer Perceptron (MLP)**
+    *   **Architecture:** Deeper network with 4 hidden layers (256, 128, 64, 32 neurons), BatchNorm, Dropout (0.5), ReLU activations.
+    *   **Input:** Oversampled, scaled, selected features.
+    *   **Output:** Dense layer with softmax and weighted categorical crossentropy loss.
+
+3.  **Model B: Advanced 1D Convolutional Neural Network (1D-CNN)**
+    *   **Architecture:** Deeper CNN with 3 conv blocks (increasing filters: 32, 64, 128), each with Conv1d, BatchNorm, ReLU, MaxPool; followed by 2 dense layers (128, 64) with Dropout.
+    *   **Input:** Oversampled, scaled, selected features.
+    *   **Output:** Dense layer with softmax and weighted categorical crossentropy loss.
 
 #### Step 5: Evaluation and Reporting
 

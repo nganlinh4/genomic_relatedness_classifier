@@ -1,0 +1,21 @@
+{
+    "dataset": "cM_1",
+    "imbalance_mode": "weighted",
+    "models": {
+        "MLP": {
+            "accuracy": 0.06552706552706553,
+            "f1_score": 0.014633968927616496,
+            "auc": null
+        },
+        "CNN": {
+            "accuracy": 0.1225071225071225,
+            "f1_score": 0.10057322039639942,
+            "auc": null
+        },
+        "RandomForest": {
+            "accuracy": 0.8789173789173789,
+            "f1_score": 0.8550563491084878,
+            "auc": null
+        }
+    }
+}
