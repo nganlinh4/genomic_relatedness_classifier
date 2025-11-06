@@ -67,6 +67,7 @@ reports/**/*.jpg
 reports/**/*.jpeg
 reports/**/*.json
 reports/**/*.md
+reports/**/*.pdf
 data/processed/evaluation_results_*.json
 
 # Processed CSVs (regenerable)

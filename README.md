@@ -14,9 +14,9 @@ This project builds and evaluates models to predict kinship using IBD metrics an
   - `top_features_*.pkl`, `scaler_*.pkl` — Feature selection outputs
   - `evaluation_results_*_*.json` — Per-mode eval JSONs (temporary; consolidated after build)
 
-- `models/<dataset>/<mode>/` — Trained model weights (`mlp.pth`, `cnn.pth`)
+- `models/<dataset>/<mode>/` — Trained model weights (`mlp.pth`, `cnn.pth`) — generated on run (git-ignored)
 
-- `reports/<dataset>/` — Consolidated results and plots
+- `reports/<dataset>/` — Consolidated results and plots — generated on run (git-ignored)
   - `results.json` — Machine-readable consolidated results
   - `results.md` — Human-readable summary with links to confusion matrices
   - `feature_importance_<dataset>.png`, `kinship_distribution_<dataset>.png`
@@ -32,12 +32,50 @@ This project builds and evaluates models to predict kinship using IBD metrics an
 
 - `.venv/` — Python virtual environment (created with uv)
 
+### Project structure (Mermaid)
+
+```mermaid
+graph TD
+  A[Repo root] --> B[data/]
+  B --> B1[raw/ — input CSVs and merged_info.out]
+  B --> B2[processed/ — merged_{dataset}.csv, top_features_{dataset}.pkl, scaler_{dataset}.pkl, evaluation_results_*.json]
+
+  A --> C[scripts/ — pipeline]
+  subgraph SCRIPTS [scripts]
+    C1[data_prep.py — parse merged_info.out and join with labeled pairs → merged_{dataset}.csv]
+    C2[eda.py — plot kinship target distribution → reports/{dataset}/kinship_distribution_{dataset}.png]
+    C3[feature_selection.py — RF importance, save top_features & scaler, plot top-20]
+    C4[train_models.py — train MLP and 1D-CNN per imbalance mode; save weights]
+    C5[evaluate_models.py — evaluate models; robust multiclass AUC; save confusion matrices + per-mode JSON]
+    C6[build_report.py — aggregate per-mode JSONs → reports/{dataset}/results.{json,md} (+ optional PDF)]
+    C7[run_all.py — orchestrate full pipeline for one dataset or all]
+  end
+
+  A --> D[models/ — generated model weights per dataset/mode (git-ignored)]
+  A --> E[reports/ — generated consolidated results and plots (git-ignored)]
+  E --> E1[{dataset}/results.json, results.md, results.pdf?]
+  E --> E2[{dataset}/feature_importance_{dataset}.png, kinship_distribution_{dataset}.png]
+  E --> E3[{dataset}/{mode}/confusion_matrix_*.png]
+  A --> F[docs/plan.md — design notes and roadmap]
+```
+
 ## Setup
 
-1. Install uv: `pip install uv`
-2. Create venv: `uv venv`
-3. Activate: `.venv\Scripts\activate` (Windows)
-4. Install deps: `uv pip install pandas`
+Prereqs:
+- Python 3.10–3.12
+- NVIDIA GPU with a compatible CUDA driver
+
+Steps (Windows PowerShell):
+1) Install uv (optional, used below to manage the venv)
+  - `pip install uv`
+2) Create and activate a virtual environment
+  - `uv venv`
+  - `.\.venv\Scripts\activate`
+3) Install PyTorch with CUDA (follow the official selector for your CUDA/driver)
+  - Example (CUDA 12.1): `pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio`
+4) Install Python dependencies
+  - `pip install pandas scikit-learn imbalanced-learn matplotlib seaborn`
+5) Optional: for PDF export of reports, install Node.js (for `npx md-to-pdf`)
 
 ## Usage
 
@@ -53,16 +91,16 @@ Run for all datasets:
 
 Optional flags for control (CLI overrides env vars):
 - `--epochs <int>` — number of training epochs (default 1 or `$env:TRAIN_EPOCHS`)
-- `--train-device cpu|cuda` — training device (default cuda; CUDA is required)
-- `--eval-device cpu|cuda` — evaluation device (default cuda; CUDA is required)
+- `--train-device cuda` — training device (CUDA is required; CPU is disabled by policy)
+- `--eval-device cuda` — evaluation device (CUDA is required; CPU is disabled by policy)
 
 Examples:
 ```
-# 50 epochs on CPU for training, evaluate on CPU
-./.venv/Scripts/python.exe scripts/run_all.py cM_1 --epochs 50 --train-device cpu --eval-device cpu
+# 50 epochs on GPU
+./.venv/Scripts/python.exe scripts/run_all.py cM_1 --epochs 50 --train-device cuda --eval-device cuda
 
 # Use environment vars instead (PowerShell):
-$env:TRAIN_EPOCHS=25; $env:TRAIN_DEVICE="cpu"; $env:EVAL_DEVICE="cpu"; \
+$env:TRAIN_EPOCHS=25; $env:TRAIN_DEVICE="cuda"; $env:EVAL_DEVICE="cuda"; \
   ./.venv/Scripts/python.exe scripts/run_all.py cM_3
 ```
 
@@ -78,6 +116,7 @@ Outputs are consolidated under `reports/<dataset>/`:
 - Model weights are stored under `models/<dataset>/<mode>/mlp.pth` and `cnn.pth`.
 - Per-mode evaluation JSONs are cleaned up after consolidation; the canonical outputs are under `reports/<dataset>/`.
 - The previous dataset-specific scripts and legacy generators were removed in favor of the generalized pipeline.
+- Generated artifacts in `models/` and `reports/` are ignored by git to keep the repo light.
 
 ### Interpreting results and class imbalance
 

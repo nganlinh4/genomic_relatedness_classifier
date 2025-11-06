@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import shutil
+import subprocess
 from datetime import datetime
 
 
@@ -84,6 +86,59 @@ def main():
             lines.append("Some class imbalance may still exist. Review macro/weighted metrics alongside accuracy.\n")
         lines.append("\n")
 
+    # Dataset-level plots (EDA and Feature Importance)
+    eda_plot = os.path.join('reports', dataset, f'kinship_distribution_{dataset}.png')
+    fi_plot = os.path.join('reports', dataset, f'feature_importance_{dataset}.png')
+    if os.path.exists(eda_plot) or os.path.exists(fi_plot):
+        lines.append("## Dataset-level plots\n")
+        if os.path.exists(eda_plot):
+            rel_eda = os.path.relpath(eda_plot, start=out_dir)
+            lines.append(f"<details><summary>Kinship Distribution</summary>\n\n![]({rel_eda})\n\n</details>")
+        if os.path.exists(fi_plot):
+            rel_fi = os.path.relpath(fi_plot, start=out_dir)
+            lines.append(f"<details><summary>Top Feature Importances</summary>\n\n![]({rel_fi})\n\n</details>")
+        lines.append("")
+
+    # Executive summary: best model per mode and overall recommendation
+    try:
+        lines.append("## Executive summary\n")
+        lines.append("| Mode | Best Model | Accuracy | F1 (weighted) | AUC (weighted) |")
+        lines.append("|------|------------|----------|---------------|----------------|")
+        summary = []
+        for mode in modes:
+            mb = consolidated['modes'].get(mode)
+            if not mb:
+                continue
+            best_key = None
+            best = None
+            for mk, metrics in mb.get('models', {}).items():
+                if metrics is None:
+                    continue
+                if best is None or (metrics.get('f1_weighted') or 0) > (best.get('f1_weighted') or 0):
+                    best = metrics
+                    best_key = mk
+            if best_key:
+                summary.append((mode, best_key, best))
+                def fmt(x):
+                    return f"{x:.4f}" if isinstance(x, (int, float)) and x is not None else ("N/A" if x is None else str(x))
+                lines.append(f"| {mode} | {best_key} | {fmt(best.get('accuracy'))} | {fmt(best.get('f1_weighted'))} | {fmt(best.get('auc_weighted'))} |")
+
+        # Simple recommendation: pick the highest F1-weighted; if it's 'zero' and imbalance is high, caution
+        rec = None
+        if summary:
+            rec = max(summary, key=lambda t: (t[2].get('f1_weighted') or 0))
+            mode_name, model_name, metrics = rec
+            lines.append("")
+            lines.append("### Recommendation\n")
+            lines.append(f"Consider {model_name} in '{mode_name}' mode as the current best performer (F1_w={metrics.get('f1_weighted'):.4f}).")
+            if vcd_any:
+                if maj / total >= 0.6 and mode_name == 'zero':
+                    lines.append("Given the observed imbalance, treat 'zero' as a baseline; prefer 'weighted' or 'smote' in longer training runs if performance is close.")
+            lines.append("")
+    except Exception:
+        # Do not fail report generation on summary issues
+        pass
+
     for mode in modes:
         if mode not in consolidated['modes']:
             continue
@@ -133,6 +188,23 @@ def main():
     with open(md_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
     print(f"Wrote Markdown report to {md_path}")
+
+    # Optionally convert Markdown to PDF using npx md-to-pdf if available
+    try:
+        npx_path = shutil.which('npx')
+        if npx_path:
+            pdf_path = os.path.join(out_dir, 'results.pdf')
+            print("Converting Markdown to PDF via npx md-to-pdf...")
+            # Example: npx md-to-pdf reports/<dataset>/results.md --output reports/<dataset>/results.pdf
+            subprocess.run([npx_path, 'md-to-pdf', md_path, '--output', pdf_path], check=False)
+            if os.path.exists(pdf_path):
+                print(f"Wrote PDF report to {pdf_path}")
+            else:
+                print("md-to-pdf did not produce a PDF. You can run it manually if needed.")
+        else:
+            print("npx not found; skipping PDF generation. Install Node.js and run 'npx md-to-pdf' to produce PDF.")
+    except Exception as e:
+        print(f"PDF generation step skipped due to error: {e}")
 
     # Optionally delete separate per-mode JSONs to reduce clutter
     for mode in list(per_mode.keys()):
