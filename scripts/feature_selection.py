@@ -60,14 +60,29 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'feature_importance_{dataset}_{args.scenario}.png')
 
+    # Global font scaling for readability in two-column layout
+    plt.rcParams.update({
+        'font.size': 18,
+        'axes.titlesize': 28,
+        'axes.labelsize': 22,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'legend.fontsize': 18,
+        'figure.dpi': 200,
+    })
     top20 = feature_importance_df.head(20)
-    plt.figure(figsize=(12, 10), dpi=300)
+    plt.figure(figsize=(11, 9))
     bars = plt.barh(top20['feature'][::-1], top20['importance'][::-1], color='#F58518')
-    plt.title(f'Top 20 Feature Importances ({dataset}, {args.scenario})', fontsize=22, pad=14)
-    plt.xlabel('Importance', fontsize=18, labelpad=10)
-    plt.ylabel('Feature', fontsize=18, labelpad=10)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=12)
+    plt.title(f'Top 20 Feature Importances ({dataset}, {args.scenario})', pad=14)
+    plt.xlabel('Importance', labelpad=10)
+    plt.ylabel('Feature', labelpad=10)
+    # Annotate bars with values
+    try:
+        for bar in bars:
+            width = bar.get_width()
+            plt.gca().text(width, bar.get_y() + bar.get_height()/2, f" {width:.3f}", va='center', ha='left', fontsize=16)
+    except Exception:
+        pass
     for spine in ['top', 'right']:
         plt.gca().spines[spine].set_visible(False)
     plt.gca().invert_yaxis()  # Highest at top

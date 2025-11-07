@@ -203,7 +203,16 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     out_dir = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
     os.makedirs(out_dir, exist_ok=True)
     cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}.png')
-    plt.figure(figsize=(14, 12), dpi=300)
+    # Global rcParams scaling to ensure legibility when downscaled
+    plt.rcParams.update({
+        'font.size': 20,
+        'axes.titlesize': 30,
+        'axes.labelsize': 24,
+        'xtick.labelsize': 18,
+        'ytick.labelsize': 18,
+        'figure.dpi': 200,
+    })
+    plt.figure(figsize=(11, 10))
     sns.heatmap(
         cm,
         annot=True,
@@ -212,13 +221,13 @@ def evaluate_model(model, X, y, model_key, pretty_name):
         xticklabels=le.classes_,
         yticklabels=le.classes_,
         cbar=False,
-        annot_kws={"size": 20, "weight": "bold"}
+        annot_kws={"size": 22, "weight": "bold"}
     )
-    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {scenario} / {imbalance_mode})', fontsize=26, pad=16)
-    plt.xlabel('Predicted', fontsize=20, labelpad=12)
-    plt.ylabel('True', fontsize=20, labelpad=12)
-    plt.xticks(rotation=45, ha='right', fontsize=16)
-    plt.yticks(rotation=0, fontsize=16)
+    plt.title(f'Confusion Matrix - {pretty_name}\n({dataset} / {scenario} / {imbalance_mode})', pad=18)
+    plt.xlabel('Predicted', labelpad=12)
+    plt.ylabel('True', labelpad=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(cm_path)
     plt.close()
@@ -275,7 +284,15 @@ print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_na
 out_dir_mode = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
 os.makedirs(out_dir_mode, exist_ok=True)
 cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{scenario}_{imbalance_mode}.png')
-plt.figure(figsize=(14, 12), dpi=300)
+plt.rcParams.update({
+    'font.size': 20,
+    'axes.titlesize': 30,
+    'axes.labelsize': 24,
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
+    'figure.dpi': 200,
+})
+plt.figure(figsize=(11, 10))
 sns.heatmap(
     cm_rf,
     annot=True,
@@ -284,13 +301,13 @@ sns.heatmap(
     xticklabels=le.classes_,
     yticklabels=le.classes_,
     cbar=False,
-    annot_kws={"size": 20, "weight": "bold"}
+    annot_kws={"size": 22, "weight": "bold"}
 )
-plt.title(f'Confusion Matrix - RandomForest ({dataset} / {scenario} / {imbalance_mode})', fontsize=26, pad=16)
-plt.xlabel('Predicted', fontsize=20, labelpad=12)
-plt.ylabel('True', fontsize=20, labelpad=12)
-plt.xticks(rotation=45, ha='right', fontsize=16)
-plt.yticks(rotation=0, fontsize=16)
+plt.title(f'Confusion Matrix - RandomForest\n({dataset} / {scenario} / {imbalance_mode})', pad=18)
+plt.xlabel('Predicted', labelpad=12)
+plt.ylabel('True', labelpad=12)
+plt.xticks(rotation=45, ha='right')
+plt.yticks(rotation=0)
 plt.tight_layout()
 plt.savefig(cm_rf_path)
 plt.close()
