@@ -202,7 +202,9 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     # Plot confusion matrix into organized directory
     out_dir = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
     os.makedirs(out_dir, exist_ok=True)
-    cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}.png')
+    base_name = f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}'
+    cm_path = os.path.join(out_dir, base_name + '.png')
+    cm_path_svg = os.path.join(out_dir, base_name + '.svg')
     # Global rcParams scaling to ensure legibility when downscaled
     plt.rcParams.update({
         'font.size': 20,
@@ -230,6 +232,10 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(cm_path)
+    try:
+        plt.savefig(cm_path_svg, format='svg')
+    except Exception:
+        pass
     plt.close()
 
     return {
@@ -239,7 +245,8 @@ def evaluate_model(model, X, y, model_key, pretty_name):
         'auc_weighted': auc_weighted,
         'auc_macro': auc_macro,
         'auc_micro': auc_micro,
-        'confusion_matrix_path': cm_path,
+    'confusion_matrix_path': cm_path,
+    'confusion_matrix_path_svg': cm_path_svg if os.path.exists(cm_path_svg) else None,
         'per_class': cls_report
     }
 
@@ -283,7 +290,9 @@ print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_na
 # Plot confusion matrix for RF
 out_dir_mode = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
 os.makedirs(out_dir_mode, exist_ok=True)
-cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{scenario}_{imbalance_mode}.png')
+base_name_rf = f'confusion_matrix_rf_{dataset}_{scenario}_{imbalance_mode}'
+cm_rf_path = os.path.join(out_dir_mode, base_name_rf + '.png')
+cm_rf_path_svg = os.path.join(out_dir_mode, base_name_rf + '.svg')
 plt.rcParams.update({
     'font.size': 20,
     'axes.titlesize': 30,
@@ -310,6 +319,10 @@ plt.xticks(rotation=45, ha='right')
 plt.yticks(rotation=0)
 plt.tight_layout()
 plt.savefig(cm_rf_path)
+try:
+    plt.savefig(cm_rf_path_svg, format='svg')
+except Exception:
+    pass
 plt.close()
 
 rf_metrics = {
@@ -320,6 +333,7 @@ rf_metrics = {
     'auc_macro': auc_m_rf,
     'auc_micro': auc_micro_rf,
     'confusion_matrix_path': cm_rf_path,
+    'confusion_matrix_path_svg': cm_rf_path_svg if os.path.exists(cm_rf_path_svg) else None,
     'per_class': classification_report(y_val, y_pred_rf, output_dict=True)
 }
 

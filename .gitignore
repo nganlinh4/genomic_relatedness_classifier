@@ -82,3 +82,4 @@ data/processed/scaler_cM_*.pkl
 data/processed/top_features_cM_*.pkl
 data/processed/scaler_cM_*_noUN.pkl
 data/processed/top_features_cM_*_noUN.pkl
+*.svg

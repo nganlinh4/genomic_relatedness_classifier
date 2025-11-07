@@ -58,7 +58,9 @@ def main():
     # Plot feature importance into organized directory: reports/<dataset>/assets/<scenario>/
     out_dir = os.path.join('reports', dataset, 'assets', args.scenario)
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f'feature_importance_{dataset}_{args.scenario}.png')
+    base_name = f'feature_importance_{dataset}_{args.scenario}'
+    out_path = os.path.join(out_dir, base_name + '.png')
+    out_path_svg = os.path.join(out_dir, base_name + '.svg')
 
     # Global font scaling for readability in two-column layout
     plt.rcParams.update({
@@ -88,6 +90,10 @@ def main():
     plt.gca().invert_yaxis()  # Highest at top
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches='tight')
+    try:
+        plt.savefig(out_path_svg, format='svg', bbox_inches='tight')
+    except Exception:
+        pass
     plt.close()
 
     print(f"Top 50 selected features saved to data/processed/top_features_{dataset}{suffix}.pkl")

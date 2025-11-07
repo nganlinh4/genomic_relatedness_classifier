@@ -21,7 +21,9 @@ def main():
     # Save plot to organized reports directory: reports/<dataset>/assets/<scenario>/
     out_dir = os.path.join('reports', dataset, 'assets', args.scenario)
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f'kinship_distribution_{dataset}_{args.scenario}.png')
+    base_name = f'kinship_distribution_{dataset}_{args.scenario}'
+    out_path = os.path.join(out_dir, base_name + '.png')
+    out_path_svg = os.path.join(out_dir, base_name + '.svg')
 
     # Stronger, global font scaling so plots stay legible in a 2-column layout
     plt.rcParams.update({
@@ -50,6 +52,10 @@ def main():
         ax.spines[spine].set_visible(False)
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches='tight')
+    try:
+        plt.savefig(out_path_svg, format='svg', bbox_inches='tight')
+    except Exception:
+        pass
     plt.close()
 
     print(f"Kinship distribution plot saved to {out_path}")

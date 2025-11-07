@@ -149,21 +149,24 @@ def build_markdown_en(consolidated, reports_dir):
 
     # Scenario-level plots
     for scenario_key in [k for k in ['included','noUN'] if k in consolidated.get('scenarios', {})]:
-        # New organized assets directories
         assets_dir = os.path.join(reports_dir, 'assets', scenario_key)
-        eda_plot = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
-        fi_plot = os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario_key}.png')
-        if os.path.exists(eda_plot) or os.path.exists(fi_plot):
+        # Prefer SVG for crisp text; fallback to PNG if SVG missing
+        eda_svg = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.svg')
+        eda_png = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
+        fi_svg = os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario_key}.svg')
+        fi_png = os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario_key}.png')
+        eda_plot = eda_svg if os.path.exists(eda_svg) else eda_png
+        fi_plot = fi_svg if os.path.exists(fi_svg) else fi_png
+        if (eda_plot and os.path.exists(eda_plot)) or (fi_plot and os.path.exists(fi_plot)):
             lines.append(f"## Plots ({scenario_key})\n")
             items = []
-            if os.path.exists(eda_plot):
+            if eda_plot and os.path.exists(eda_plot):
                 rel_eda = os.path.relpath(eda_plot, start=reports_dir)
                 items.append(("Kinship Distribution", rel_eda))
-            if os.path.exists(fi_plot):
+            if fi_plot and os.path.exists(fi_plot):
                 rel_fi = os.path.relpath(fi_plot, start=reports_dir)
                 items.append(("Top Feature Importances", rel_fi))
             if items:
-                # Enforce two-column layout for scenario assets
                 lines.append('<div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">')
                 for title_txt, img_path in items:
                     lines.append('<figure style="flex:0 0 48%; max-width:48%; margin:0;">')
@@ -217,8 +220,15 @@ def build_markdown_en(consolidated, reports_dir):
             cms = []
             for model_key, metrics in mode_block.get('models', {}).items():
                 cm_path = metrics.get('confusion_matrix_path')
-                if cm_path and os.path.exists(cm_path):
-                    rel_path = os.path.relpath(cm_path, start=reports_dir)
+                cm_svg = metrics.get('confusion_matrix_path_svg')
+                # Prefer SVG if exists on disk
+                use_path = None
+                if cm_svg and os.path.exists(cm_svg):
+                    use_path = cm_svg
+                elif cm_path and os.path.exists(cm_path):
+                    use_path = cm_path
+                if use_path:
+                    rel_path = os.path.relpath(use_path, start=reports_dir)
                     cms.append((model_key, rel_path))
             if cms:
                 lines.append("")
@@ -390,8 +400,14 @@ def build_markdown_kr(consolidated, reports_dir):
             cms = []
             for model_key, metrics in mode_block.get('models', {}).items():
                 cm_path = metrics.get('confusion_matrix_path')
-                if cm_path and os.path.exists(cm_path):
-                    rel_path = os.path.relpath(cm_path, start=reports_dir)
+                cm_svg = metrics.get('confusion_matrix_path_svg')
+                use_path = None
+                if cm_svg and os.path.exists(cm_svg):
+                    use_path = cm_svg
+                elif cm_path and os.path.exists(cm_path):
+                    use_path = cm_path
+                if use_path:
+                    rel_path = os.path.relpath(use_path, start=reports_dir)
                     cms.append((model_key, rel_path))
             if cms:
                 lines.append("")
