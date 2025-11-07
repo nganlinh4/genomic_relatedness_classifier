@@ -75,3 +75,7 @@ data/processed/merged_cM_*.csv
 
 # Raw data (usually large, reproducible from source)
 data/raw/**
+
+# Generated scaler and top features files
+data/processed/scaler_cM_*.pkl
+data/processed/top_features_cM_*.pkl
