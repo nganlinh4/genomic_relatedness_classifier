@@ -137,6 +137,37 @@ def build_markdown_en(consolidated, reports_dir):
     lines.append('</tbody>')
     lines.append('</table>')
     lines.append("</div>\n")
+
+    # At-a-glance highlights for executives
+    try:
+        lines.append("### At a glance\n")
+        for scenario_key, scen in consolidated.get('scenarios', {}).items():
+            # Majority share on validation set (imbalance indicator)
+            vcd_any = None
+            if scen['modes']:
+                any_mode_key = next(iter(scen['modes']))
+                vcd_any = scen['modes'][any_mode_key].get('val_class_distribution', {})
+            total = sum(int(v) for v in vcd_any.values()) if vcd_any else 0
+            maj = max(int(v) for v in vcd_any.values()) if vcd_any else 0
+            share = (maj / total) if total else 0.0
+            # Best across all modes/models by weighted F1
+            best_tuple = None  # (f1w, aucw, mode, model, valN)
+            for mode_key, mb in scen.get('modes', {}).items():
+                for model_key, metrics in (mb.get('models') or {}).items():
+                    if not metrics:
+                        continue
+                    f1w = metrics.get('f1_weighted') or 0.0
+                    aucw = metrics.get('auc_weighted') or 0.0
+                    valn = mb.get('val_samples')
+                    if (best_tuple is None) or (f1w > best_tuple[0]):
+                        best_tuple = (f1w, aucw, mode_key, model_key, valn)
+            if best_tuple:
+                f1w, aucw, mode_key, model_key, valn = best_tuple
+                lines.append(f"- {scenario_key}: Best {model_key} ({mode_key}) — F1w {f1w:.2f}, AUCw {aucw:.2f}; Val N {valn}; Majority share {share:.0%}")
+        lines.append("")
+    except Exception:
+        pass
+
     lines.append("\n## Scenarios and modes\n")
     lines.append("- Scenarios: 'included' keeps UN-labeled rows; 'noUN' removes them prior to splits and training.\n")
     lines.append("- Modes: zero (no rebalancing), weighted (class-weighted loss), smote (oversampling), overunder (SMOTE + ENN/Tomek).\n\n")
@@ -337,6 +368,34 @@ def build_markdown_kr(consolidated, reports_dir):
     lines.append('</tbody>')
     lines.append('</table>')
     lines.append("</div>\n")
+
+    # 간단 요약 (의사결정자용)
+    try:
+        lines.append("### 한눈에 보기\n")
+        for scenario_key, scen in consolidated.get('scenarios', {}).items():
+            vcd_any = None
+            if scen['modes']:
+                any_mode_key = next(iter(scen['modes']))
+                vcd_any = scen['modes'][any_mode_key].get('val_class_distribution', {})
+            total = sum(int(v) for v in vcd_any.values()) if vcd_any else 0
+            maj = max(int(v) for v in vcd_any.values()) if vcd_any else 0
+            share = (maj / total) if total else 0.0
+            best_tuple = None  # (f1w, aucw, mode, model, valN)
+            for mode_key, mb in scen.get('modes', {}).items():
+                for model_key, metrics in (mb.get('models') or {}).items():
+                    if not metrics:
+                        continue
+                    f1w = metrics.get('f1_weighted') or 0.0
+                    aucw = metrics.get('auc_weighted') or 0.0
+                    valn = mb.get('val_samples')
+                    if (best_tuple is None) or (f1w > best_tuple[0]):
+                        best_tuple = (f1w, aucw, mode_key, model_key, valn)
+            if best_tuple:
+                f1w, aucw, mode_key, model_key, valn = best_tuple
+                lines.append(f"- {scenario_key}: 최고 {model_key} ({mode_key}) — F1(가중) {f1w:.2f}, AUC(가중) {aucw:.2f}; 검증 N {valn}; 다수 클래스 비율 {share:.0%}")
+        lines.append("")
+    except Exception:
+        pass
     for scenario_key in [k for k in ['included','noUN'] if k in consolidated.get('scenarios', {})]:
         assets_dir = os.path.join(reports_dir, 'assets', scenario_key)
         eda_plot = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
