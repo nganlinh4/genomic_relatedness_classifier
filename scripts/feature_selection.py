@@ -55,8 +55,8 @@ def main():
     with open(os.path.join('data', 'processed', f'scaler_{dataset}{suffix}.pkl'), 'wb') as f:
         pickle.dump(scaler_selected, f)
 
-    # Plot feature importance into reports
-    out_dir = os.path.join('reports', dataset)
+    # Plot feature importance into organized directory: reports/<dataset>/assets/<scenario>/
+    out_dir = os.path.join('reports', dataset, 'assets', args.scenario)
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'feature_importance_{dataset}_{args.scenario}.png')
 

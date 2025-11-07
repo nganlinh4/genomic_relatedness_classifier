@@ -199,8 +199,8 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     cls_report = classification_report(y_true, predicted, labels=unique_labels, target_names=target_names, output_dict=True)
     print(classification_report(y_true, predicted, labels=unique_labels, target_names=target_names))
 
-    # Plot confusion matrix
-    out_dir = os.path.join('reports', dataset)
+    # Plot confusion matrix into organized directory
+    out_dir = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
     os.makedirs(out_dir, exist_ok=True)
     cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}.png')
     plt.figure(figsize=(12, 10), dpi=200)
@@ -272,7 +272,7 @@ target_names_rf = [str(le.classes_[i]) for i in unique_labels_rf]
 print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_names=target_names_rf))
 
 # Plot confusion matrix for RF
-out_dir_mode = os.path.join('reports', dataset)
+out_dir_mode = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
 os.makedirs(out_dir_mode, exist_ok=True)
 cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{scenario}_{imbalance_mode}.png')
 plt.figure(figsize=(12, 10), dpi=200)
@@ -329,9 +329,21 @@ results = {
 # Compute post-sampling train counts for reporting (mirrors training policy)
 try:
     if imbalance_mode in ['smote', 'overunder']:
-        sm = SMOTE(k_neighbors=1, random_state=42)
-        X_res, y_res = sm.fit_resample(X_train, y_train)
+        class_counts = np.bincount(y_train, minlength=num_classes)
+        max_count = int(class_counts.max())
+        if imbalance_mode == 'smote':
+            target_per_class = max_count
+            sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes)}
+        else:
+            target_per_class = 300
+            sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes) if int(class_counts[cls_idx]) < target_per_class}
+        if sampling_strategy:
+            sm = SMOTE(k_neighbors=1, random_state=42, sampling_strategy=sampling_strategy)
+            X_res, y_res = sm.fit_resample(X_train, y_train)
+        else:
+            X_res, y_res = X_train, y_train
         if imbalance_mode == 'overunder':
+            # Optional cleaning mirror (no effect on final counts we report)
             if SMOTEENN is not None:
                 try:
                     se = SMOTEENN(random_state=42)
@@ -344,6 +356,16 @@ try:
                     X_res, y_res = st.fit_resample(X_res, y_res)
                 except Exception:
                     pass
+            # Clip to exactly 300 if any cleaning overshoots
+            final_indices = []
+            for cls_idx in range(num_classes):
+                cls_mask = np.where(y_res == cls_idx)[0]
+                if len(cls_mask) > target_per_class:
+                    cls_mask = np.random.default_rng(42).choice(cls_mask, size=target_per_class, replace=False)
+                final_indices.extend(cls_mask.tolist())
+            final_indices = np.array(final_indices)
+            X_res = X_res[final_indices]
+            y_res = y_res[final_indices]
         y_train_res = y_res
         results['train_samples_after'] = int(len(y_train_res))
         results['train_class_distribution_after'] = {le.classes_[i]: int((y_train_res == i).sum()) for i in range(len(le.classes_))}
@@ -381,4 +403,5 @@ with open(f'data/processed/evaluation_results_{dataset}_{scenario}_{imbalance_mo
     json.dump(convert_numpy_types(results), f, indent=2)
 
 # Feature importance plot (already done in feature_selection, but reload and show)
-print(f"\nFeature importance plot generated in reports/{dataset}/feature_importance_{dataset}_{scenario}.png if feature_selection was run.")
+assets_dir = os.path.join('reports', dataset, 'assets', scenario)
+print(f"\nFeature importance plot generated in {os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario}.png')} if feature_selection was run.")

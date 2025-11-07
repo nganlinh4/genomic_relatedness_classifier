@@ -73,6 +73,7 @@ def build_markdown_en(consolidated, reports_dir):
     if consolidated.get('label_names'):
         lines.append(f"Labels: {', '.join(consolidated['label_names'])}\n")
     lines.append("## Executive summary\n")
+    lines.append('<div style="font-size:13px; line-height:1.25">')
     lines.append("| Scenario | Mode | Best Model | Val N | Train N (pre→post) | Accuracy | F1 (weighted) | AUC (weighted) | Reliability |")
     lines.append("|----------|------|------------|-------|---------------------|----------|---------------|----------------|-------------|")
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
@@ -108,6 +109,7 @@ def build_markdown_en(consolidated, reports_dir):
                 reli = "Mitigates imbalance (over+under sampling)"
             lines.append(f"| {scenario_key} | {mode_key} | {best_key} | {val_n} | {pre_n}→{post_n} | {_fmt(best.get('accuracy'))} | {_fmt(best.get('f1_weighted'))} | {_fmt(best.get('auc_weighted'))} | {reli} |")
 
+    lines.append("</div>\n")
     lines.append("\n## Scenarios and modes\n")
     lines.append("- Scenarios: 'included' keeps UN-labeled rows; 'noUN' removes them prior to splits and training.\n")
     lines.append("- Modes: zero (no rebalancing), weighted (class-weighted loss), smote (oversampling), overunder (SMOTE + ENN/Tomek).\n\n")
@@ -120,8 +122,10 @@ def build_markdown_en(consolidated, reports_dir):
 
     # Scenario-level plots
     for scenario_key in [k for k in ['included','noUN'] if k in consolidated.get('scenarios', {})]:
-        eda_plot = os.path.join(reports_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
-        fi_plot = os.path.join(reports_dir, f'feature_importance_{dataset}_{scenario_key}.png')
+        # New organized assets directories
+        assets_dir = os.path.join(reports_dir, 'assets', scenario_key)
+        eda_plot = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
+        fi_plot = os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario_key}.png')
         if os.path.exists(eda_plot) or os.path.exists(fi_plot):
             lines.append(f"## Plots ({scenario_key})\n")
             items = []
@@ -231,6 +235,7 @@ def build_markdown_kr(consolidated, reports_dir):
     if consolidated.get('label_names'):
         lines.append(f"레이블: {', '.join(consolidated['label_names'])}\n")
     lines.append("## 요약\n")
+    lines.append('<div style="font-size:13px; line-height:1.25">')
     lines.append("| 시나리오 | 모드 | 최고 모델 | 검증 N | 학습 N (전→후) | 정확도 | F1 (가중치) | AUC (가중치) | 신뢰도 |")
     lines.append("|----------|------|----------|--------|-----------------|--------|------------|--------------|--------|")
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
@@ -266,9 +271,11 @@ def build_markdown_kr(consolidated, reports_dir):
             lines.append(f"| {scenario_key} | {mode_key} | {best_key} | {val_n} | {pre_n}→{post_n} | {_fmt(best.get('accuracy'))} | {_fmt(best.get('f1_weighted'))} | {_fmt(best.get('auc_weighted'))} | {reli} |")
 
     # Scenario plots
+    lines.append("</div>\n")
     for scenario_key in [k for k in ['included','noUN'] if k in consolidated.get('scenarios', {})]:
-        eda_plot = os.path.join(reports_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
-        fi_plot = os.path.join(reports_dir, f'feature_importance_{dataset}_{scenario_key}.png')
+        assets_dir = os.path.join(reports_dir, 'assets', scenario_key)
+        eda_plot = os.path.join(assets_dir, f'kinship_distribution_{dataset}_{scenario_key}.png')
+        fi_plot = os.path.join(assets_dir, f'feature_importance_{dataset}_{scenario_key}.png')
         if os.path.exists(eda_plot) or os.path.exists(fi_plot):
             lines.append(f"## 플롯 ({scenario_key})\n")
             items = []

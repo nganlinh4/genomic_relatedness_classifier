@@ -18,8 +18,8 @@ def main():
     df = pd.read_csv(merged_csv)
     kinship_counts = df['kinship'].value_counts()
 
-    # Save plot to reports directory
-    out_dir = os.path.join('reports', dataset)
+    # Save plot to organized reports directory: reports/<dataset>/assets/<scenario>/
+    out_dir = os.path.join('reports', dataset, 'assets', args.scenario)
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'kinship_distribution_{dataset}_{args.scenario}.png')
 

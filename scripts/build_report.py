@@ -80,6 +80,22 @@ def main():
                 pass
         print(f"Pruned {removed} evaluation JSON files for dataset {dataset}.")
 
+    # Generate PDFs using md-to-pdf if available
+    try:
+        import shutil as _shutil
+        import subprocess as _subp
+        npx_cmd = _shutil.which('npx') or _shutil.which('npx.cmd')
+        if npx_cmd:
+            # English
+            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results.md'), '--output', os.path.join(out_dir, 'results.pdf')], check=False)
+            # Korean
+            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results_KR.md'), '--output', os.path.join(out_dir, 'results_KR.pdf')], check=False)
+            print("PDFs generated via md-to-pdf (EN and KR).")
+        else:
+            print("npx/md-to-pdf not found on PATH; skipping PDF generation. Install Node and md-to-pdf to enable.")
+    except Exception as e:
+        print(f"PDF generation skipped due to error: {e}")
+
 
 if __name__ == '__main__':
     main()

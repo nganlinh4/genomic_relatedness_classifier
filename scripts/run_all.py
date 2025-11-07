@@ -11,6 +11,10 @@ def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str],
     subprocess.run(["./.venv/Scripts/python.exe", "scripts/data_prep.py", ds], check=True)
     subprocess.run(["./.venv/Scripts/python.exe", "scripts/data_prep.py", ds, "--drop-un"], check=True)
 
+    # Clean legacy plots so final report only references organized directories
+    print(f"Cleaning legacy plots for {ds}")
+    subprocess.run(["./.venv/Scripts/python.exe", "scripts/cleanup_legacy_reports.py", ds], check=False)
+
     print(f"Running Step 2: EDA for {ds}")
     subprocess.run(["./.venv/Scripts/python.exe", "scripts/eda.py", ds, "--scenario", "included"], check=True)
     subprocess.run(["./.venv/Scripts/python.exe", "scripts/eda.py", ds, "--scenario", "noUN"], check=True)

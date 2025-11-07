@@ -91,12 +91,27 @@ X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size
 
 # Resampling strategies
 if imbalance_mode in ['smote', 'overunder']:
-    smote = SMOTE(k_neighbors=1, random_state=42)
-    X_res, y_res = smote.fit_resample(X_train, y_train)
-    print(f"Original training samples: {len(y_train)} -> after SMOTE: {len(y_res)}")
+    # Determine target per-class size:
+    #   smote: oversample minority classes up to the MAX existing class count (not necessarily UN)
+    #   overunder: produce balanced classes up to fixed size 300 (or lower if class count < 300) then optional cleaning
+    class_counts = torch.bincount(torch.tensor(y_train), minlength=num_classes).numpy()
+    max_count = int(class_counts.max())
+    if imbalance_mode == 'smote':
+        target_per_class = max_count
+        sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes)}
+    else:  # overunder -> aim for 300/class; only oversample those below 300
+        target_per_class = 300
+        sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes) if int(class_counts[cls_idx]) < target_per_class}
+    # Apply SMOTE only if any class needs oversampling
+    if sampling_strategy:
+        smote = SMOTE(k_neighbors=1, random_state=42, sampling_strategy=sampling_strategy)
+        X_res, y_res = smote.fit_resample(X_train, y_train)
+    else:
+        X_res, y_res = X_train, y_train
+    print(f"SMOTE target per class: {target_per_class}. Samples after SMOTE: {len(y_res)}")
     if imbalance_mode == 'overunder':
-        # Prefer SMOTEENN if available, else SMOTETomek; else fallback to pure SMOTE
         sampler_used = 'SMOTE'
+        # Apply ENN/Tomek clean-up only; do NOT further change target sizes drastically
         if SMOTEENN is not None:
             try:
                 se = SMOTEENN(random_state=42)
@@ -111,7 +126,20 @@ if imbalance_mode in ['smote', 'overunder']:
                 sampler_used = 'SMOTE+Tomek'
             except Exception:
                 pass
-        print(f"After overunder ({sampler_used}) samples: {len(y_res)}")
+        print(f"After overunder clean-up ({sampler_used}) samples: {len(y_res)}")
+    # Clip any slight overshoot in counts for overunder to 300 (rare) by random downsampling
+    if imbalance_mode == 'overunder':
+        final_indices = []
+        y_res_np = np.array(y_res)
+        for cls_idx in range(num_classes):
+            cls_mask = np.where(y_res_np == cls_idx)[0]
+            if len(cls_mask) > target_per_class:
+                cls_mask = np.random.default_rng(42).choice(cls_mask, size=target_per_class, replace=False)
+            final_indices.extend(cls_mask.tolist())
+        final_indices = np.array(final_indices)
+        X_res = X_res[final_indices]
+        y_res = y_res[final_indices]
+        print(f"Post clip (overunder) samples: {len(y_res)}")
     X_train_res, y_train_res = X_res, y_res
 else:
     X_train_res, y_train_res = X_train, y_train
