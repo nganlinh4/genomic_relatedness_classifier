@@ -86,11 +86,11 @@ def main():
         import subprocess as _subp
         npx_cmd = _shutil.which('npx') or _shutil.which('npx.cmd')
         if npx_cmd:
-            # English
-            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results.md'), '--output', os.path.join(out_dir, 'results.pdf')], check=False)
+            # English (default output naming by md-to-pdf)
+            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results.md')], check=False)
             # Korean
-            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results_KR.md'), '--output', os.path.join(out_dir, 'results_KR.pdf')], check=False)
-            print("PDFs generated via md-to-pdf (EN and KR).")
+            _subp.run([npx_cmd, 'md-to-pdf', os.path.join(out_dir, 'results_KR.md')], check=False)
+            print("PDFs generated via md-to-pdf (EN and KR) without explicit --output flags.")
         else:
             print("npx/md-to-pdf not found on PATH; skipping PDF generation. Install Node and md-to-pdf to enable.")
     except Exception as e:

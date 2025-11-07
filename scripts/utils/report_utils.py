@@ -73,9 +73,22 @@ def build_markdown_en(consolidated, reports_dir):
     if consolidated.get('label_names'):
         lines.append(f"Labels: {', '.join(consolidated['label_names'])}\n")
     lines.append("## Executive summary\n")
-    lines.append('<div style="font-size:13px; line-height:1.25">')
-    lines.append("| Scenario | Mode | Best Model | Val N | Train N (pre→post) | Accuracy | F1 (weighted) | AUC (weighted) | Reliability |")
-    lines.append("|----------|------|------------|-------|---------------------|----------|---------------|----------------|-------------|")
+    lines.append('<div style="font-size:12px; line-height:1.25">')
+    lines.append('<table style="font-size:12px; border-collapse:collapse;">')
+    lines.append('<thead>')
+    lines.append('<tr>'
+                 '<th style="padding:2px 6px; font-size:12px;">Scenario</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Mode</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Best Model</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Val N</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Train N (pre→post)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Accuracy</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">F1 (weighted)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">AUC (weighted)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Reliability</th>'
+                 '</tr>')
+    lines.append('</thead>')
+    lines.append('<tbody>')
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
         # Imbalance share
         vcd_any = None
@@ -107,8 +120,22 @@ def build_markdown_en(consolidated, reports_dir):
                 reli = "Mitigates imbalance (oversampled train)"
             else:
                 reli = "Mitigates imbalance (over+under sampling)"
-            lines.append(f"| {scenario_key} | {mode_key} | {best_key} | {val_n} | {pre_n}→{post_n} | {_fmt(best.get('accuracy'))} | {_fmt(best.get('f1_weighted'))} | {_fmt(best.get('auc_weighted'))} | {reli} |")
+            lines.append(
+                f"<tr>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{scenario_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{mode_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{best_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{val_n}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{pre_n}→{post_n}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('accuracy'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('f1_weighted'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('auc_weighted'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{reli}</td>"
+                f"</tr>"
+            )
 
+    lines.append('</tbody>')
+    lines.append('</table>')
     lines.append("</div>\n")
     lines.append("\n## Scenarios and modes\n")
     lines.append("- Scenarios: 'included' keeps UN-labeled rows; 'noUN' removes them prior to splits and training.\n")
@@ -235,9 +262,22 @@ def build_markdown_kr(consolidated, reports_dir):
     if consolidated.get('label_names'):
         lines.append(f"레이블: {', '.join(consolidated['label_names'])}\n")
     lines.append("## 요약\n")
-    lines.append('<div style="font-size:13px; line-height:1.25">')
-    lines.append("| 시나리오 | 모드 | 최고 모델 | 검증 N | 학습 N (전→후) | 정확도 | F1 (가중치) | AUC (가중치) | 신뢰도 |")
-    lines.append("|----------|------|----------|--------|-----------------|--------|------------|--------------|--------|")
+    lines.append('<div style="font-size:12px; line-height:1.25">')
+    lines.append('<table style="font-size:12px; border-collapse:collapse;">')
+    lines.append('<thead>')
+    lines.append('<tr>'
+                 '<th style="padding:2px 6px; font-size:12px;">시나리오</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">모드</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">최고 모델</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">검증 N</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">학습 N (전→후)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">정확도</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">F1 (가중치)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">AUC (가중치)</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">신뢰도</th>'
+                 '</tr>')
+    lines.append('</thead>')
+    lines.append('<tbody>')
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
         vcd_any = None
         if scen['modes']:
@@ -268,9 +308,23 @@ def build_markdown_kr(consolidated, reports_dir):
                 reli = "불균형 완화(SMOTE 과샘플링)"
             else:
                 reli = "불균형 완화(과샘플+언더샘플)"
-            lines.append(f"| {scenario_key} | {mode_key} | {best_key} | {val_n} | {pre_n}→{post_n} | {_fmt(best.get('accuracy'))} | {_fmt(best.get('f1_weighted'))} | {_fmt(best.get('auc_weighted'))} | {reli} |")
+            lines.append(
+                f"<tr>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{scenario_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{mode_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{best_key}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{val_n}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{pre_n}→{post_n}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('accuracy'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('f1_weighted'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('auc_weighted'))}</td>"
+                f"<td style='padding:2px 6px; font-size:12px;'>{reli}</td>"
+                f"</tr>"
+            )
 
     # Scenario plots
+    lines.append('</tbody>')
+    lines.append('</table>')
     lines.append("</div>\n")
     for scenario_key in [k for k in ['included','noUN'] if k in consolidated.get('scenarios', {})]:
         assets_dir = os.path.join(reports_dir, 'assets', scenario_key)
