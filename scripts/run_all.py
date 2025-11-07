@@ -4,30 +4,32 @@ import os
 import argparse
 from typing import Optional
 
+python_exe = os.path.join(".venv", "Scripts" if sys.platform == "win32" else "bin", "python.exe" if sys.platform == "win32" else "python")
+
 
 def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], special_epochs: Optional[str], prune: bool):
     print(f"Running Step 1: Data Preparation for {ds}")
     # Two scenarios: included (default) and noUN (drop UN)
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/data_prep.py", ds], check=True)
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/data_prep.py", ds, "--drop-un"], check=True)
+    subprocess.run([python_exe, "scripts/data_prep.py", ds], check=True)
+    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--drop-un"], check=True)
 
     # Clean legacy plots so final report only references organized directories
     print(f"Cleaning legacy plots for {ds}")
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/cleanup_legacy_reports.py", ds], check=False)
+    subprocess.run([python_exe, "scripts/cleanup_legacy_reports.py", ds], check=False)
 
     print(f"Running Step 2: EDA for {ds}")
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/eda.py", ds, "--scenario", "included"], check=True)
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/eda.py", ds, "--scenario", "noUN"], check=True)
+    subprocess.run([python_exe, "scripts/eda.py", ds, "--scenario", "included"], check=True)
+    subprocess.run([python_exe, "scripts/eda.py", ds, "--scenario", "noUN"], check=True)
 
     print(f"Running Step 3: Feature Selection for {ds}")
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/feature_selection.py", ds, "--scenario", "included"], check=True)
-    subprocess.run(["./.venv/Scripts/python.exe", "scripts/feature_selection.py", ds, "--scenario", "noUN"], check=True)
+    subprocess.run([python_exe, "scripts/feature_selection.py", ds, "--scenario", "included"], check=True)
+    subprocess.run([python_exe, "scripts/feature_selection.py", ds, "--scenario", "noUN"], check=True)
 
     modes = ["zero", "weighted", "smote", "overunder"]
     for scenario in ["included", "noUN"]:
         for mode in modes:
             print(f"Running Step 4-5: Train and Evaluate for {ds} ({scenario}) with {mode}")
-            train_cmd = ["./.venv/Scripts/python.exe", "scripts/train_models.py", ds, mode, "--scenario", scenario]
+            train_cmd = [python_exe, "scripts/train_models.py", ds, mode, "--scenario", scenario]
             if epochs:
                 train_cmd += ["--epochs", str(epochs)]
             if train_device:
@@ -36,13 +38,13 @@ def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str],
                 train_cmd += ["--special-epochs", str(special_epochs)]
             subprocess.run(train_cmd, check=True)
 
-            eval_cmd = ["./.venv/Scripts/python.exe", "scripts/evaluate_models.py", ds, mode, "--scenario", scenario]
+            eval_cmd = [python_exe, "scripts/evaluate_models.py", ds, mode, "--scenario", scenario]
             if eval_device:
                 eval_cmd += ["--eval-device", eval_device]
             subprocess.run(eval_cmd, check=True)
 
     print(f"Building consolidated report for {ds}")
-    report_cmd = ["./.venv/Scripts/python.exe", "scripts/build_report.py", ds]
+    report_cmd = [python_exe, "scripts/build_report.py", ds]
     if prune:
         report_cmd.append("--prune")
     subprocess.run(report_cmd, check=True)

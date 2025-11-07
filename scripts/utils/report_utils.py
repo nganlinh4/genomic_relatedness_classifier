@@ -71,7 +71,7 @@ def build_markdown_en(consolidated, reports_dir):
     lines.append(f"Generated: {consolidated['generated_at']}  ")
     lines.append(f"Device: {consolidated['device']}\n")
     if consolidated.get('label_names'):
-        lines.append(f"Labels: {', '.join(consolidated['label_names'])}\n")
+        lines.append(f"Labels: {', '.join(str(ln) for ln in consolidated['label_names'])}\n")
     lines.append("## Executive summary\n")
     lines.append('<div style="font-size:12px; line-height:1.25">')
     lines.append('<table style="font-size:12px; border-collapse:collapse;">')
@@ -302,7 +302,7 @@ def build_markdown_kr(consolidated, reports_dir):
     lines.append(f"생성 시각: {consolidated['generated_at']}  ")
     lines.append(f"디바이스: {consolidated['device']}\n")
     if consolidated.get('label_names'):
-        lines.append(f"레이블: {', '.join(consolidated['label_names'])}\n")
+        lines.append(f"레이블: {', '.join(str(ln) for ln in consolidated['label_names'])}\n")
     lines.append("## 요약\n")
     lines.append('<div style="font-size:12px; line-height:1.25">')
     lines.append('<table style="font-size:12px; border-collapse:collapse;">')
