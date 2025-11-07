@@ -18,7 +18,10 @@ The goal is to build and evaluate models that predict kinship. The features are 
 
 3.  **Merge Datasets:**
     *   Merge the parsed `merged_info` statistics with the selected columns from the `model_input` file on `pair`.
-    *   **Deliverable:** `data/processed/merged_<dataset>.csv` (regenerable and ignored by Git).
+    *   We now branch into two scenarios to study the ambiguous `UN` label impact:
+        - UN-included scenario: retain all rows (including `UN`).
+        - UN-removed scenario: drop rows where `kinship == 'UN'`.
+    *   **Deliverables:** `data/processed/merged_<dataset>.csv` (UN-included) and `data/processed/merged_<dataset>_noUN.csv` (UN-removed). Both are regenerable and ignored by Git.
 
 #### Step 2: Exploratory Data Analysis (EDA)
 
@@ -42,14 +45,18 @@ The goal is to build and evaluate models that predict kinship. The features are 
 
 #### Step 4: Model Building & Training (CUDA-only)
 
-This is a multi-class classification problem. We train on GPU (CUDA required). We evaluate three imbalance modes per dataset:
+This is a multi-class classification problem. We train on GPU (CUDA required). We evaluate imbalance strategies per dataset and per scenario:
 
 - `zero`: No class weighting, no resampling.
 - `weighted`: Class-weighted loss (CrossEntropy with class weights).
-- `smote`: SMOTE applied on the training split (no class weights to avoid double-compensation).
+- `smote`: Oversampling via SMOTE applied on the training split (no class weights to avoid double-compensation).
+- `overunder`: Combined over + under sampling (SMOTE + ENN or SMOTE + Tomek) to both synthesize minority examples and remove ambiguous majority samples near decision boundaries.
 
-1.  **Data Oversampling:**
-    *   Apply SMOTE (Synthetic Minority Oversampling Technique) to the training set to generate synthetic samples for minority classes, balancing the dataset.
+1.  **Resampling Strategies:**
+    *   `smote`: Apply SMOTE (Synthetic Minority Oversampling Technique) to the training set to generate synthetic samples for minority classes.
+    *   `overunder`: Apply SMOTE then an under-sampling cleanup (e.g., ENN or Tomek links) to prune noisy/overlapping majority samples.
+    *   `zero`: No resampling; raw class distributions.
+    *   `weighted`: No resampling; rely on class-weighted loss.
 
 2.  **Model A: Advanced Multi-Layer Perceptron (MLP)**
     *   **Architecture:** Deeper network with 4 hidden layers (256, 128, 64, 32 neurons), BatchNorm, Dropout (0.5), ReLU activations.
@@ -74,10 +81,22 @@ For both models, calculate and present the following metrics:
 Notes on class imbalance:
 - The 'zero' mode (no rebalancing) is a baseline and may be biased toward the majority class; prioritize macro/weighted metrics and per-class results.
 - The 'weighted' mode applies class-weighted loss; the 'smote' mode oversamples the training split (validation remains original).
+- The 'overunder' mode both oversamples minorities and removes borderline/ambiguous majority samples, often sharpening class boundaries.
+
+Special training schedule:
+- A `--special-epochs` override is applied only when the scenario includes UN and the strategy uses oversampling (`smote` or `overunder`). Other runs use the global `--epochs` value to avoid slowing the whole matrix.
 
 #### Step 6: Repeat
 
 *   Execute Steps 1-5 for all three datasets: `cM_1`, `cM_3`, and `cM_6`.
-*   Each dataset produces a consolidated report under `reports/<dataset>/` (`results.json`, `results.md`, `results.pdf`), and a Korean variant (`results_KR.md`, `results_KR.pdf`). Cross-dataset comparisons are kept out of the single reports by design.
+*   For each dataset, run both scenarios (UN-included and UN-removed) and all imbalance strategies (`zero`, `weighted`, `smote`, `overunder`).
+*   Each scenario produces a consolidated report under `reports/<dataset>_<scenario>/` (`results.json`, `results.md`, `results.pdf`) plus Korean variants. Cross-dataset comparisons are intentionally excluded from single reports.
+
+Research and follow-ups (stakeholder requests):
+1. Compare results with and without oversampling.
+2. Investigate UN label bias (scenario split + sampling strategies).
+3. For non-oversampled runs, experiment with higher epochs to observe convergence differences.
+4. Feature engineering: derive aggregate statistics (mean, std, min, max, quantiles) of top-importance features to test performance lift.
+5. Tune `overunder` variant (choice of ENN vs Tomek) based on validation F1 and AUC robustness.
 
 Note: A Korean version of this plan is available at `docs/plan_KR.md`.

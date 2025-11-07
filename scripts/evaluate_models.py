@@ -12,24 +12,50 @@ import os
 import json
 import argparse
 
+# Ensure repository root is on sys.path when script executed directly
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+from imblearn.over_sampling import SMOTE
+try:
+    from imblearn.combine import SMOTEENN, SMOTETomek
+except ImportError:
+    SMOTEENN = None
+    SMOTETomek = None
+
+# Add parent directory to sys.path for absolute imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+try:
+    from scripts.utils.metrics_utils import safe_multiclass_auc
+except ModuleNotFoundError:
+    # Fallback: attempt relative import if working directory changed
+    try:
+        from utils.metrics_utils import safe_multiclass_auc  # type: ignore
+    except ModuleNotFoundError:
+        raise
+
 # CLI
-parser = argparse.ArgumentParser(description='Evaluate models for a dataset and imbalance mode')
+parser = argparse.ArgumentParser(description='Evaluate models for a dataset, scenario, and imbalance mode')
 parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
-parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote'], help='imbalance handling mode')
+parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote','overunder'], help='imbalance handling mode')
+parser.add_argument('--scenario', type=str, choices=['included','noUN'], default='included', help='Scenario: included (retain UN) or noUN (drop UN)')
 parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None, help='Evaluation device (default cuda; required to be available)')
 args = parser.parse_args()
 
 dataset = args.dataset
+scenario = args.scenario
 imbalance_mode = args.imbalance_mode
 
 # Load data
-df = pd.read_csv(f'data/processed/merged_{dataset}.csv')
+suffix = '' if scenario == 'included' else '_noUN'
+df = pd.read_csv(f'data/processed/merged_{dataset}{suffix}.csv')
 
 # Load top features and scaler
-with open(f'data/processed/top_features_{dataset}.pkl', 'rb') as f:
+with open(f'data/processed/top_features_{dataset}{suffix}.pkl', 'rb') as f:
     top_features = pickle.load(f)
 
-with open(f'data/processed/scaler_{dataset}.pkl', 'rb') as f:
+with open(f'data/processed/scaler_{dataset}{suffix}.pkl', 'rb') as f:
     scaler = pickle.load(f)
 
 # Prepare features and target
@@ -46,7 +72,6 @@ X_scaled = scaler.transform(X)
 
 # Split into train/val (same as training, but since no test, evaluate on val)
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
 X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
 # Device selection: enforce CUDA by default; error if not available when requested
@@ -131,46 +156,18 @@ num_classes = len(le.classes_)
 
 # Load models
 mlp = AdvancedMLP(input_size, num_classes).to(device)
-mlp_path = os.path.join('models', dataset, imbalance_mode, 'mlp.pth')
+mlp_path = os.path.join('models', dataset, scenario, imbalance_mode, 'mlp.pth')
 mlp.load_state_dict(torch.load(mlp_path, map_location=device))
 mlp.eval()
 
 cnn = AdvancedCNN1D(input_size, num_classes).to(device)
-cnn_path = os.path.join('models', dataset, imbalance_mode, 'cnn.pth')
+cnn_path = os.path.join('models', dataset, scenario, imbalance_mode, 'cnn.pth')
 cnn.load_state_dict(torch.load(cnn_path, map_location=device))
 cnn.eval()
 
 # Evaluate function
 def _safe_multiclass_auc(y_true_np: np.ndarray, probs_np: np.ndarray, n_classes: int):
-    # Compute per-class OvR AUC; use 0.5 baseline for classes absent in y_true or degenerate cases
-    per_class_auc = []
-    weights = []
-    for c in range(n_classes):
-        y_bin = (y_true_np == c).astype(int)
-        pos = y_bin.sum()
-        neg = len(y_bin) - pos
-        if pos > 0 and neg > 0:
-            try:
-                auc_c = roc_auc_score(y_bin, probs_np[:, c])
-            except Exception:
-                auc_c = 0.5
-        else:
-            # If no positives or no negatives, AUC undefined; use neutral baseline 0.5
-            auc_c = 0.5
-        per_class_auc.append(float(auc_c))
-        weights.append(int(pos))
-
-    macro = float(np.mean(per_class_auc)) if per_class_auc else 0.5
-    total = sum(weights)
-    weighted = float(np.average(per_class_auc, weights=weights)) if total > 0 else macro
-
-    # Micro AUC may fail if degenerate; fall back to weighted
-    try:
-        y_binarized = np.eye(n_classes)[y_true_np]
-        micro = float(roc_auc_score(y_binarized, probs_np, average='micro'))
-    except Exception:
-        micro = weighted
-    return weighted, macro, micro
+    return safe_multiclass_auc(y_true_np, probs_np, n_classes)
 
 
 def evaluate_model(model, X, y, model_key, pretty_name):
@@ -198,14 +195,14 @@ def evaluate_model(model, X, y, model_key, pretty_name):
     print(cm)
     print("Classification Report:")
     unique_labels = np.unique(np.concatenate([y_true, predicted]))
-    target_names = [le.classes_[i] for i in unique_labels]
+    target_names = [str(le.classes_[i]) for i in unique_labels]
     cls_report = classification_report(y_true, predicted, labels=unique_labels, target_names=target_names, output_dict=True)
     print(classification_report(y_true, predicted, labels=unique_labels, target_names=target_names))
 
     # Plot confusion matrix
-    out_dir = os.path.join('reports', dataset, imbalance_mode)
+    out_dir = os.path.join('reports', dataset)
     os.makedirs(out_dir, exist_ok=True)
-    cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{imbalance_mode}.png')
+    cm_path = os.path.join(out_dir, f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}.png')
     plt.figure(figsize=(12, 10), dpi=200)
     sns.heatmap(
         cm,
@@ -217,7 +214,7 @@ def evaluate_model(model, X, y, model_key, pretty_name):
         cbar=False,
         annot_kws={"size": 12}
     )
-    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {imbalance_mode})', fontsize=14)
+    plt.title(f'Confusion Matrix - {pretty_name} ({dataset} / {scenario} / {imbalance_mode})', fontsize=14)
     plt.xlabel('Predicted', fontsize=12)
     plt.ylabel('True', fontsize=12)
     plt.xticks(rotation=45, ha='right', fontsize=10)
@@ -271,13 +268,13 @@ if auc_w_rf is not None:
     print(f"AUC (OvR, weighted): {auc_w_rf:.4f}")
 print("Classification Report:")
 unique_labels_rf = np.unique(np.concatenate([y_val, y_pred_rf]))
-target_names_rf = [le.classes_[i] for i in unique_labels_rf]
+target_names_rf = [str(le.classes_[i]) for i in unique_labels_rf]
 print(classification_report(y_val, y_pred_rf, labels=unique_labels_rf, target_names=target_names_rf))
 
 # Plot confusion matrix for RF
-out_dir_mode = os.path.join('reports', dataset, imbalance_mode)
+out_dir_mode = os.path.join('reports', dataset)
 os.makedirs(out_dir_mode, exist_ok=True)
-cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{imbalance_mode}.png')
+cm_rf_path = os.path.join(out_dir_mode, f'confusion_matrix_rf_{dataset}_{scenario}_{imbalance_mode}.png')
 plt.figure(figsize=(12, 10), dpi=200)
 sns.heatmap(
     cm_rf,
@@ -289,7 +286,7 @@ sns.heatmap(
     cbar=False,
     annot_kws={"size": 12}
 )
-plt.title(f'Confusion Matrix - RandomForest ({dataset} / {imbalance_mode})', fontsize=14)
+plt.title(f'Confusion Matrix - RandomForest ({dataset} / {scenario} / {imbalance_mode})', fontsize=14)
 plt.xlabel('Predicted', fontsize=12)
 plt.ylabel('True', fontsize=12)
 plt.xticks(rotation=45, ha='right', fontsize=10)
@@ -312,12 +309,12 @@ rf_metrics = {
 # Save metrics to JSON
 results = {
     'dataset': dataset,
+    'scenario': scenario,
     'imbalance_mode': imbalance_mode,
     'device': str(device),
     'label_names': list(le.classes_),
     'val_samples': int(len(y_val)),
     'val_class_distribution': {le.classes_[i]: int((y_val == i).sum()) for i in range(len(le.classes_))},
-    # Add train set counts before and after sampling (SMOTE affects train only)
     'train_samples_before': int(len(y_train)),
     'train_class_distribution_before': {le.classes_[i]: int((y_train == i).sum()) for i in range(len(le.classes_))},
     'train_samples_after': None,
@@ -331,9 +328,23 @@ results = {
 
 # Compute post-sampling train counts for reporting (mirrors training policy)
 try:
-    if imbalance_mode == 'smote':
+    if imbalance_mode in ['smote', 'overunder']:
         sm = SMOTE(k_neighbors=1, random_state=42)
-        _, y_train_res = sm.fit_resample(X_train, y_train)
+        X_res, y_res = sm.fit_resample(X_train, y_train)
+        if imbalance_mode == 'overunder':
+            if SMOTEENN is not None:
+                try:
+                    se = SMOTEENN(random_state=42)
+                    X_res, y_res = se.fit_resample(X_res, y_res)
+                except Exception:
+                    pass
+            elif SMOTETomek is not None:
+                try:
+                    st = SMOTETomek(random_state=42)
+                    X_res, y_res = st.fit_resample(X_res, y_res)
+                except Exception:
+                    pass
+        y_train_res = y_res
         results['train_samples_after'] = int(len(y_train_res))
         results['train_class_distribution_after'] = {le.classes_[i]: int((y_train_res == i).sum()) for i in range(len(le.classes_))}
     else:
@@ -344,8 +355,30 @@ except Exception:
     results['train_samples_after'] = int(len(y_train))
     results['train_class_distribution_after'] = results['train_class_distribution_before']
 
-with open(f'data/processed/evaluation_results_{dataset}_{imbalance_mode}.json', 'w') as f:
-    json.dump(results, f, indent=2)
+def convert_numpy_types(obj):
+    """Recursively convert numpy types to built-ins and ensure dict keys are JSON-compatible."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        new_dict = {}
+        for key, value in obj.items():
+            # Normalize key types (numpy scalars -> str of Python value to avoid TypeError)
+            if isinstance(key, (np.integer, np.floating)):
+                norm_key = str(key.item())
+            else:
+                norm_key = key if isinstance(key, (str, int, float, bool, type(None))) else str(key)
+            new_dict[norm_key] = convert_numpy_types(value)
+        return new_dict
+    if isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
+
+with open(f'data/processed/evaluation_results_{dataset}_{scenario}_{imbalance_mode}.json', 'w') as f:
+    json.dump(convert_numpy_types(results), f, indent=2)
 
 # Feature importance plot (already done in feature_selection, but reload and show)
-print(f"\nFeature importance plot generated in reports/{dataset}/feature_importance_{dataset}.png if feature_selection was run.")
+print(f"\nFeature importance plot generated in reports/{dataset}/feature_importance_{dataset}_{scenario}.png if feature_selection was run.")

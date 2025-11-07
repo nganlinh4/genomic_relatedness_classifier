@@ -9,24 +9,43 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import SMOTE
+try:
+    from imblearn.combine import SMOTEENN, SMOTETomek
+except ImportError:
+    SMOTEENN = None
+    SMOTETomek = None
 import numpy as np
 import sys
+
+# Ensure repository root on sys.path for potential future intra-package imports
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 # Make CUDA behavior deterministic and more stable on Windows; disable cuDNN if needed
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
+# On Windows, favor stability by disabling cuDNN by default (can override with TORCH_CUDNN_ALLOW=1)
+if sys.platform.startswith('win') and os.environ.get('TORCH_CUDNN_ALLOW', '0') != '1':
+    torch.backends.cudnn.enabled = False
 
 # CLI
 parser = argparse.ArgumentParser(description='Train models for a dataset and imbalance mode')
 parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
-parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote'], help='imbalance handling mode')
+parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote','overunder'], help='imbalance handling mode')
+parser.add_argument('--scenario', type=str, choices=['included','noUN'], default='included', help='Scenario: included (retain UN) or noUN (drop UN)')
 parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs (default from TRAIN_EPOCHS env or 1)')
 parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None, help='Training device (default cuda; required to be available)')
+parser.add_argument('--special-epochs', type=int, default=None, help='Epoch override for UN-included + oversampling modes (smote/overunder)')
 args = parser.parse_args()
 
 dataset = args.dataset
+scenario = args.scenario
 imbalance_mode = args.imbalance_mode
-epochs = args.epochs if args.epochs is not None else int(os.environ.get('TRAIN_EPOCHS', '1'))
+base_epochs = args.epochs if args.epochs is not None else int(os.environ.get('TRAIN_EPOCHS', '1'))
+epochs = base_epochs
+if args.special_epochs and scenario == 'included' and imbalance_mode in ['smote','overunder']:
+    epochs = args.special_epochs
 
 # Device selection: enforce CUDA by default; error if not available when requested
 train_device_env = (args.train_device or os.environ.get('TRAIN_DEVICE', 'cuda')).lower()
@@ -41,17 +60,18 @@ else:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is required by default but not available.")
     device = torch.device('cuda')
-print(f"Using device: {device}, Dataset: {dataset}, Imbalance: {imbalance_mode}")
+print(f"Using device: {device}, Dataset: {dataset}, Scenario: {scenario}, Imbalance: {imbalance_mode}, Epochs: {epochs}")
 
 # Load data
-df = pd.read_csv(f'data/processed/merged_{dataset}.csv')
+suffix = '' if scenario == 'included' else '_noUN'
+df = pd.read_csv(f'data/processed/merged_{dataset}{suffix}.csv')
 
 # Load top features
-with open(f'data/processed/top_features_{dataset}.pkl', 'rb') as f:
+with open(f'data/processed/top_features_{dataset}{suffix}.pkl', 'rb') as f:
     top_features = pickle.load(f)
 
 # Load scaler
-with open(f'data/processed/scaler_{dataset}.pkl', 'rb') as f:
+with open(f'data/processed/scaler_{dataset}{suffix}.pkl', 'rb') as f:
     scaler = pickle.load(f)
 
 # Select features
@@ -69,27 +89,45 @@ num_classes = len(le.classes_)
 # Split
 X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
-# Apply SMOTE if mode is smote
-if imbalance_mode == 'smote':
+# Resampling strategies
+if imbalance_mode in ['smote', 'overunder']:
     smote = SMOTE(k_neighbors=1, random_state=42)
-    X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
-    print(f"Original training samples: {len(y_train)}")
-    print(f"SMOTE training samples: {len(y_train_smote)}")
+    X_res, y_res = smote.fit_resample(X_train, y_train)
+    print(f"Original training samples: {len(y_train)} -> after SMOTE: {len(y_res)}")
+    if imbalance_mode == 'overunder':
+        # Prefer SMOTEENN if available, else SMOTETomek; else fallback to pure SMOTE
+        sampler_used = 'SMOTE'
+        if SMOTEENN is not None:
+            try:
+                se = SMOTEENN(random_state=42)
+                X_res, y_res = se.fit_resample(X_res, y_res)
+                sampler_used = 'SMOTE+ENN'
+            except Exception:
+                pass
+        elif SMOTETomek is not None:
+            try:
+                st = SMOTETomek(random_state=42)
+                X_res, y_res = st.fit_resample(X_res, y_res)
+                sampler_used = 'SMOTE+Tomek'
+            except Exception:
+                pass
+        print(f"After overunder ({sampler_used}) samples: {len(y_res)}")
+    X_train_res, y_train_res = X_res, y_res
 else:
-    X_train_smote, y_train_smote = X_train, y_train
-    print(f"Training samples: {len(y_train)}")
+    X_train_res, y_train_res = X_train, y_train
+    print(f"Training samples: {len(y_train)} (no oversampling)")
 
 # Convert to tensors (keep on CPU; move per-batch during training for stability)
-X_train = torch.tensor(X_train_smote, dtype=torch.float32)
+X_train = torch.tensor(X_train_res, dtype=torch.float32)
 X_val = torch.tensor(X_val, dtype=torch.float32)
-y_train = torch.tensor(y_train_smote, dtype=torch.long)
+y_train = torch.tensor(y_train_res, dtype=torch.long)
 y_val = torch.tensor(y_val, dtype=torch.long)
 
 # DataLoader
 train_dataset = TensorDataset(X_train, y_train)
 val_dataset = TensorDataset(X_val, y_val)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=True)
-val_loader = DataLoader(val_dataset, batch_size=32, pin_memory=True)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=False)
+val_loader = DataLoader(val_dataset, batch_size=32, pin_memory=False)
 
 # Advanced MLP Model
 class AdvancedMLP(nn.Module):
@@ -234,7 +272,7 @@ mlp = AdvancedMLP(len(top_features), num_classes)
 train_model(mlp, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
 
 # Save MLP under models/<dataset>/<mode>/
-models_dir = os.path.join('models', dataset, imbalance_mode)
+models_dir = os.path.join('models', dataset, scenario, imbalance_mode)
 os.makedirs(models_dir, exist_ok=True)
 torch.save(mlp.state_dict(), os.path.join(models_dir, 'mlp.pth'))
 

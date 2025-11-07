@@ -1,18 +1,20 @@
 import sys
 import os
+import argparse
 import pandas as pd
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/data_prep.py <dataset>")
-        print("dataset: cM_1, cM_3, cM_6")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Prepare merged feature dataset with optional UN filtering.')
+    parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
+    parser.add_argument('--drop-un', action='store_true', help="Drop rows where kinship == 'UN' (UN-removed scenario)")
+    args = parser.parse_args()
 
-    dataset = sys.argv[1]
+    dataset = args.dataset
     raw_csv = os.path.join('data', 'raw', f'model_input_with_kinship_filtered_{dataset}.csv')
     merged_info_path = os.path.join('data', 'raw', 'merged_info.out')
-    out_csv = os.path.join('data', 'processed', f'merged_{dataset}.csv')
+    scenario_suffix = '_noUN' if args.drop_un else ''
+    out_csv = os.path.join('data', 'processed', f'merged_{dataset}{scenario_suffix}.csv')
 
     # Parse merged_info.out
     data = []
@@ -44,13 +46,20 @@ def main():
     df_csv = df_csv[keep_cols]
     df_csv['pair'] = df_csv['pair'].astype(str).str.strip('[]')
 
+    if args.drop_un:
+        before = len(df_csv)
+        df_csv = df_csv[df_csv['kinship'] != 'UN'].reset_index(drop=True)
+        after = len(df_csv)
+        print(f"Dropped UN rows: {before - after} (from {before} to {after})")
+
     # Merge
     df_final = pd.merge(df_csv, df_merged, on='pair', how='inner')
 
     # Save
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     df_final.to_csv(out_csv, index=False)
-    print(f"Merged dataset saved to {out_csv}")
+    scenario = 'UN-removed' if args.drop_un else 'UN-included'
+    print(f"Merged dataset saved to {out_csv} (scenario: {scenario})")
 
 
 if __name__ == '__main__':

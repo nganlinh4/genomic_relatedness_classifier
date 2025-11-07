@@ -72,6 +72,7 @@ data/processed/evaluation_results_*.json
 
 # Processed CSVs (regenerable)
 data/processed/merged_cM_*.csv
+data/processed/merged_cM_*_noUN.csv
 
 # Raw data (usually large, reproducible from source)
 data/raw/**
@@ -79,3 +80,5 @@ data/raw/**
 # Generated scaler and top features files
 data/processed/scaler_cM_*.pkl
 data/processed/top_features_cM_*.pkl
+data/processed/scaler_cM_*_noUN.pkl
+data/processed/top_features_cM_*_noUN.pkl
