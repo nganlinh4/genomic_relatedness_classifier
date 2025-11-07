@@ -18,9 +18,11 @@ This project builds and evaluates models to predict kinship using IBD metrics an
 
 - `reports/<dataset>/` — Consolidated results and plots — generated on run (git-ignored)
   - `results.json` — Machine-readable consolidated results
-  - `results.md` — Human-readable summary with links to confusion matrices
-  - `feature_importance_<dataset>.png`, `kinship_distribution_<dataset>.png`
-  - `<mode>/confusion_matrix_*.png` — Per-mode confusion matrix images
+  - `results.md`, `results_KR.md` — Markdown reports (EN/KR)
+  - `results.pdf`, `results_KR.pdf` — Optional PDFs via `npx md-to-pdf`
+  - `assets/<scenario>/feature_importance_<dataset>_<scenario>.svg|png`
+  - `assets/<scenario>/kinship_distribution_<dataset>_<scenario>.svg|png`
+  - `plots/confusion/<scenario>/<mode>/confusion_matrix_*.svg|png`
 
 - `scripts/` — Orchestration and processing
   - `run_all.py` — End-to-end pipeline runner
@@ -85,6 +87,7 @@ Run for all datasets:
 
 Optional flags for control (CLI overrides env vars):
 - `--epochs <int>` — number of training epochs (default 1 or `$env:TRAIN_EPOCHS`)
+- `--special-epochs <int>` — override epochs only for UN-included + oversampling (smote/overunder)
 - `--train-device cuda` — training device (CUDA is required; CPU is disabled by policy)
 - `--eval-device cuda` — evaluation device (CUDA is required; CPU is disabled by policy)
 
@@ -100,9 +103,22 @@ $env:TRAIN_EPOCHS=25; $env:TRAIN_DEVICE="cuda"; $env:EVAL_DEVICE="cuda"; \
 
 Outputs are consolidated under `reports/<dataset>/`:
 - `results.json` — comprehensive machine-readable results
-- `results.md` — human-readable summary with metric tables and confusion matrices
-- `feature_importance_<dataset>.png` — top feature importances
-- `kinship_distribution_<dataset>.png` — target distribution
+- `results.md` / `results_KR.md` — human-readable summaries with metric tables and plots
+- Scenario plots: `assets/<scenario>/feature_importance_*.svg|png` and `kinship_distribution_*.svg|png`
+- Confusion matrices: `plots/confusion/<scenario>/<mode>/confusion_matrix_*.svg|png`
+
+### Scenarios and modes
+
+- Scenarios:
+  - `included`: keep rows labeled `UN` to measure impact of the ambiguous class
+  - `noUN`: drop `UN` before split/training
+- Modes (imbalance strategies):
+  - `zero`: no rebalancing (baseline; may favor majority)
+  - `weighted`: class-weighted loss only
+  - `smote`: oversample the training split via SMOTE
+  - `overunder`: SMOTE then ENN/Tomek cleanup (over + under)
+
+Reports embed scenario plots in a two-column layout and prefer SVG for crisp text; confusion matrices are included per mode/model.
 
 ## Notes
 
@@ -117,7 +133,7 @@ Outputs are consolidated under `reports/<dataset>/`:
 - Many datasets here are highly imbalanced (e.g., majority class > 80%).
 - 'zero' mode performs no rebalancing and can appear strong on accuracy while failing minority classes — treat as a baseline only.
 - 'weighted' mode (class-weighted loss) and 'smote' mode (oversampling on train split) address imbalance differently; review macro/weighted F1 and per-class metrics.
-- AUC is computed robustly per class (OvR) with safe fallbacks, so it will always be numeric; prefer macro/weighted AUC for imbalanced settings.
+- AUC is computed robustly per class (OvR) with safe fallbacks (never N/A); prefer macro/weighted AUC for imbalanced settings.
 
 ### Git LFS (optional)
 

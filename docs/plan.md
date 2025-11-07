@@ -90,7 +90,7 @@ Special training schedule:
 
 *   Execute Steps 1-5 for all three datasets: `cM_1`, `cM_3`, and `cM_6`.
 *   For each dataset, run both scenarios (UN-included and UN-removed) and all imbalance strategies (`zero`, `weighted`, `smote`, `overunder`).
-*   Each scenario produces a consolidated report under `reports/<dataset>_<scenario>/` (`results.json`, `results.md`, `results.pdf`) plus Korean variants. Cross-dataset comparisons are intentionally excluded from single reports.
+*   For each dataset, a single consolidated report is written to `reports/<dataset>/` (English + Korean Markdown, optional PDFs). Both scenarios (`included` / `noUN`) are presented within the same report, with per-mode sections and confusion matrices. Scenario plots (kinship distribution, feature importance) are saved as both SVG and PNG and embedded with a two-column layout.
 
 Research and follow-ups (stakeholder requests):
 1. Compare results with and without oversampling.
