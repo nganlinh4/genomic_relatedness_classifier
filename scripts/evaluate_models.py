@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix, classification_report
 from sklearn.ensemble import RandomForestClassifier
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to avoid Tkinter warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np

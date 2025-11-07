@@ -5,6 +5,8 @@ import pickle
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to suppress Tk warnings
 import matplotlib.pyplot as plt
 
 

@@ -2,6 +2,9 @@ import sys
 import os
 import argparse
 import pandas as pd
+import importlib
+import matplotlib
+matplotlib.use('Agg')  # Force non-interactive backend to avoid Tkinter object deletion warnings
 import matplotlib.pyplot as plt
 
 
