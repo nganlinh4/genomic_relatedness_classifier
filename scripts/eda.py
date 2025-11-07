@@ -23,12 +23,16 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'kinship_distribution_{dataset}_{args.scenario}.png')
 
-    plt.figure(figsize=(10, 6))
-    kinship_counts.plot(kind='bar')
-    plt.title(f'Kinship Target Distribution ({dataset}, {args.scenario})')
-    plt.xlabel('Kinship Category')
-    plt.ylabel('Count')
-    plt.xticks(rotation=45)
+    # Larger, publication-ready fonts for 2-column report layout
+    plt.figure(figsize=(12, 8), dpi=300)
+    ax = kinship_counts.plot(kind='bar', color='#4C78A8')
+    ax.set_title(f'Kinship Target Distribution ({dataset}, {args.scenario})', fontsize=22, pad=12)
+    ax.set_xlabel('Kinship Category', fontsize=18, labelpad=10)
+    ax.set_ylabel('Count', fontsize=18, labelpad=10)
+    ax.tick_params(axis='x', labelrotation=45, labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
     plt.tight_layout()
     plt.savefig(out_path)
     plt.close()

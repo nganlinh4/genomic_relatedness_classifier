@@ -163,9 +163,10 @@ def build_markdown_en(consolidated, reports_dir):
                 rel_fi = os.path.relpath(fi_plot, start=reports_dir)
                 items.append(("Top Feature Importances", rel_fi))
             if items:
+                # Enforce two-column layout for scenario assets
                 lines.append('<div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">')
                 for title_txt, img_path in items:
-                    lines.append('<figure style="flex:1; min-width:320px; margin:0;">')
+                    lines.append('<figure style="flex:0 0 48%; max-width:48%; margin:0;">')
                     lines.append(f'<img src="{img_path}" style="width:100%; max-width:100%;" />')
                     lines.append(f'<figcaption style="text-align:center; font-size: 13px; margin-top:6px;">{title_txt}</figcaption>')
                     lines.append('</figure>')
@@ -340,9 +341,10 @@ def build_markdown_kr(consolidated, reports_dir):
                 rel_fi = os.path.relpath(fi_plot, start=reports_dir)
                 items.append(("상위 특성 중요도", rel_fi))
             if items:
+                # Enforce two-column layout for scenario assets
                 lines.append('<div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">')
                 for title_txt, img_path in items:
-                    lines.append('<figure style="flex:1; min-width:320px; margin:0;">')
+                    lines.append('<figure style="flex:0 0 48%; max-width:48%; margin:0;">')
                     lines.append(f'<img src="{img_path}" style="width:100%; max-width:100%;" />')
                     lines.append(f'<figcaption style="text-align:center; font-size: 13px; margin-top:6px;">{title_txt}</figcaption>')
                     lines.append('</figure>')

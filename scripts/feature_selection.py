@@ -60,12 +60,19 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'feature_importance_{dataset}_{args.scenario}.png')
 
-    plt.figure(figsize=(10, 8))
-    plt.barh(feature_importance_df.head(20)['feature'], feature_importance_df.head(20)['importance'])
-    plt.title(f'Top 20 Feature Importances ({dataset}, {args.scenario})')
-    plt.xlabel('Importance')
+    top20 = feature_importance_df.head(20)
+    plt.figure(figsize=(12, 10), dpi=300)
+    bars = plt.barh(top20['feature'][::-1], top20['importance'][::-1], color='#F58518')
+    plt.title(f'Top 20 Feature Importances ({dataset}, {args.scenario})', fontsize=22, pad=14)
+    plt.xlabel('Importance', fontsize=18, labelpad=10)
+    plt.ylabel('Feature', fontsize=18, labelpad=10)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=12)
+    for spine in ['top', 'right']:
+        plt.gca().spines[spine].set_visible(False)
+    plt.gca().invert_yaxis()  # Highest at top
     plt.tight_layout()
-    plt.savefig(out_path)
+    plt.savefig(out_path, bbox_inches='tight')
     plt.close()
 
     print(f"Top 50 selected features saved to data/processed/top_features_{dataset}{suffix}.pkl")
