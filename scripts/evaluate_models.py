@@ -3,6 +3,7 @@ import pickle
 import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix, classification_report
+from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend to avoid Tkinter warnings
@@ -270,7 +271,10 @@ if cnn is not None:
 
 # Evaluate Random Forest baseline
 rf = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_start = datetime.utcnow()
 rf.fit(X_train, y_train)
+rf_end = datetime.utcnow()
+rf_train_duration_seconds = (rf_end - rf_start).total_seconds()
 y_pred_rf = rf.predict(X_val)
 
 # Accuracy and F1
@@ -348,7 +352,8 @@ rf_metrics = {
     'auc_micro': auc_micro_rf,
     'confusion_matrix_path': cm_rf_path,
     'confusion_matrix_path_svg': cm_rf_path_svg if os.path.exists(cm_rf_path_svg) else None,
-    'per_class': classification_report(y_val, y_pred_rf, output_dict=True)
+    'per_class': classification_report(y_val, y_pred_rf, output_dict=True),
+    'train_duration_seconds': rf_train_duration_seconds
 }
 
 # Save metrics to JSON
@@ -448,6 +453,15 @@ def convert_numpy_types(obj):
     return obj
 
 with open(f'data/processed/evaluation_results_{dataset}_{scenario}_{imbalance_mode}.json', 'w') as f:
+    # Attach training metadata if present (from training step)
+    try:
+        meta_path = os.path.join('models', dataset, scenario, imbalance_mode, 'training_meta.json')
+        if os.path.exists(meta_path):
+            with open(meta_path, 'r') as mf:
+                train_meta = json.load(mf)
+            results['training_meta'] = train_meta
+    except Exception:
+        pass
     json.dump(convert_numpy_types(results), f, indent=2)
 
 # Feature importance plot (already done in feature_selection, but reload and show)

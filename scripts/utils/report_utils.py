@@ -1,6 +1,8 @@
 import os
 import json
+import re
 from datetime import datetime
+import pandas as pd
 
 
 def load_json(path):
@@ -55,6 +57,7 @@ def consolidate(discovered, dataset: str):
             'train_class_distribution_before': res.get('train_class_distribution_before'),
             'train_samples_after': res.get('train_samples_after'),
             'train_class_distribution_after': res.get('train_class_distribution_after'),
+            'training_meta': res.get('training_meta'),
             'models': res.get('models', {})
         }
     return consolidated
@@ -72,6 +75,55 @@ def build_markdown_en(consolidated, reports_dir):
     lines.append(f"Device: {consolidated['device']}\n")
     if consolidated.get('label_names'):
         lines.append(f"Labels: {', '.join(str(ln) for ln in consolidated['label_names'])}\n")
+    # Data merging summary (computed on-the-fly from raw stats; no artifacts)
+    try:
+        raw_dir = os.path.join('data', 'raw')
+        p_path = os.path.join(raw_dir, 'merged_info.out')
+        a_path = os.path.join(raw_dir, 'merged_added_info.out')
+
+        def _parse_stats_cols(path):
+            rows = []
+            if not os.path.exists(path):
+                return pd.DataFrame(columns=['pair'])
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    if not line.strip() or 'allChr' not in line:
+                        continue
+                    m = re.search(r"\[(.*?)\]", line)
+                    if not m:
+                        continue
+                    pair = m.group(1).replace(' ', '')
+                    tail = line.split('allChr', 1)[1]
+                    stats = {'pair': pair}
+                    for mm in re.finditer(r'([^:]+?):(\S+)', tail):
+                        key = mm.group(1).strip()
+                        val = mm.group(2).strip()
+                        try:
+                            stats[key] = float(val)
+                        except ValueError:
+                            stats[key] = val
+                    rows.append(stats)
+            df = pd.DataFrame(rows)
+            return df
+
+        df_p = _parse_stats_cols(p_path)
+        df_a = _parse_stats_cols(a_path)
+        if not df_p.empty or not df_a.empty:
+            p_cols = set(df_p.columns) - {'pair'}
+            a_cols = set(df_a.columns) - {'pair'}
+            common_cols = sorted(p_cols & a_cols)
+            added_only = sorted(a_cols - p_cols)
+            lines.append("## Data merging\n")
+            lines.append("- Source stats files: merged_info.out + merged_added_info.out  ")
+            lines.append(
+                f"- Columns: primary={len(p_cols)}; added={len(a_cols)}; overlap={len(common_cols)}; added-only kept={len(added_only)}\n"
+            )
+            if added_only:
+                lines.append("- Added-only columns: " + ", ".join(added_only) + "\n")
+            lines.append("- Overlapping metrics are deduplicated (prefer primary, backfill missing from added).\n")
+    except Exception:
+        # Be quiet in reports if parsing fails
+        pass
     lines.append("## Executive summary\n")
     lines.append('<div style="font-size:12px; line-height:1.25">')
     lines.append('<table style="font-size:12px; border-collapse:collapse;">')
@@ -218,6 +270,13 @@ def build_markdown_en(consolidated, reports_dir):
             if vcd:
                 parts = [f"{k}={v}" for k, v in vcd.items()]
                 lines.append(f"Class distribution: {', '.join(parts)}\n")
+            # Training meta
+            tmeta = mode_block.get('training_meta') or {}
+            if tmeta:
+                ep = tmeta.get('epochs')
+                tdev = tmeta.get('device')
+                dur = tmeta.get('duration_seconds')
+                lines.append(f"Training: epochs={ep}, device={tdev}, time={dur:.1f}s  ")
             pre_n = mode_block.get('train_samples_before')
             post_n = mode_block.get('train_samples_after')
             tcd_pre = mode_block.get('train_class_distribution_before', {})
@@ -305,6 +364,54 @@ def build_markdown_kr(consolidated, reports_dir):
     lines.append(f"디바이스: {consolidated['device']}\n")
     if consolidated.get('label_names'):
         lines.append(f"레이블: {', '.join(str(ln) for ln in consolidated['label_names'])}\n")
+    # 데이터 병합 요약 (원시 파일에서 즉시 계산; 별도 산출물 생성 안 함)
+    try:
+        raw_dir = os.path.join('data', 'raw')
+        p_path = os.path.join(raw_dir, 'merged_info.out')
+        a_path = os.path.join(raw_dir, 'merged_added_info.out')
+
+        def _parse_stats_cols(path):
+            rows = []
+            if not os.path.exists(path):
+                return pd.DataFrame(columns=['pair'])
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    if not line.strip() or 'allChr' not in line:
+                        continue
+                    m = re.search(r"\[(.*?)\]", line)
+                    if not m:
+                        continue
+                    pair = m.group(1).replace(' ', '')
+                    tail = line.split('allChr', 1)[1]
+                    stats = {'pair': pair}
+                    for mm in re.finditer(r'([^:]+?):(\S+)', tail):
+                        key = mm.group(1).strip()
+                        val = mm.group(2).strip()
+                        try:
+                            stats[key] = float(val)
+                        except ValueError:
+                            stats[key] = val
+                    rows.append(stats)
+            df = pd.DataFrame(rows)
+            return df
+
+        df_p = _parse_stats_cols(p_path)
+        df_a = _parse_stats_cols(a_path)
+        if not df_p.empty or not df_a.empty:
+            p_cols = set(df_p.columns) - {'pair'}
+            a_cols = set(df_a.columns) - {'pair'}
+            common_cols = sorted(p_cols & a_cols)
+            added_only = sorted(a_cols - p_cols)
+            lines.append("## 데이터 병합\n")
+            lines.append("- 원본 통계 파일: merged_info.out + merged_added_info.out  ")
+            lines.append(
+                f"- 컬럼 요약: 기본={len(p_cols)}; 추가={len(a_cols)}; 중복(겹침)={len(common_cols)}; 추가 전용 유지={len(added_only)}\n"
+            )
+            if added_only:
+                lines.append("- 추가 전용 컬럼: " + ", ".join(added_only) + "\n")
+            lines.append("- 겹치는 지표는 중복을 제거합니다(기본 우선, 누락 시 추가에서 보완).\n")
+    except Exception:
+        pass
     lines.append("## 요약\n")
     lines.append('<div style="font-size:12px; line-height:1.25">')
     lines.append('<table style="font-size:12px; border-collapse:collapse;">')
@@ -432,6 +539,12 @@ def build_markdown_kr(consolidated, reports_dir):
             if vcd:
                 parts = [f"{k}={v}" for k, v in vcd.items()]
                 lines.append(f"클래스 분포: {', '.join(parts)}\n")
+            tmeta = mode_block.get('training_meta') or {}
+            if tmeta:
+                ep = tmeta.get('epochs')
+                tdev = tmeta.get('device')
+                dur = tmeta.get('duration_seconds')
+                lines.append(f"학습: 에포크={ep}, 디바이스={tdev}, 시간={dur:.1f}초  ")
             pre_n = mode_block.get('train_samples_before')
             post_n = mode_block.get('train_samples_after')
             tcd_pre = mode_block.get('train_class_distribution_before', {})

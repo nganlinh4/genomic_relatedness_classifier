@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime
 import os
 import argparse
 import pickle
@@ -61,6 +62,7 @@ else:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is required by default but not available.")
     device = torch.device('cuda')
+start_time = datetime.utcnow()
 print(f"Using device: {device}, Dataset: {dataset}, Scenario: {scenario}, Imbalance: {imbalance_mode}, Epochs: {epochs}")
 
 # Load data
@@ -314,3 +316,24 @@ else:
     torch.save(cnn.state_dict(), os.path.join(models_dir, 'cnn.pth'))
 
     print("Models saved.")
+
+# Always record training metadata (even if only RF)
+end_time = datetime.utcnow()
+duration_sec = (end_time - start_time).total_seconds()
+meta_path = os.path.join(models_dir, 'training_meta.json')
+meta_payload = {
+    'dataset': dataset,
+    'scenario': scenario,
+    'imbalance_mode': imbalance_mode,
+    'epochs': epochs,
+    'device': str(device),
+    'started_utc': start_time.isoformat() + 'Z',
+    'finished_utc': end_time.isoformat() + 'Z',
+    'duration_seconds': duration_sec,
+    'only_randomforest': args.only_randomforest,
+    'model_types_trained': [] if args.only_randomforest else ['MLP','CNN']
+}
+import json
+with open(meta_path, 'w') as mf:
+    json.dump(meta_payload, mf, indent=2)
+print("Training metadata recorded.")
