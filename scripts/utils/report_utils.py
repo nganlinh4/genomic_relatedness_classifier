@@ -244,12 +244,16 @@ def build_markdown_en(consolidated, reports_dir):
             lines.append("| Model | Val N | Train N (pre→post) | Accuracy | F1 (weighted) | F1 (macro) | AUC (weighted) | AUC (macro) | AUC (micro) |")
             lines.append("|-------|-------|---------------------|----------|---------------|------------|----------------|-------------|-------------|")
             for model_key, metrics in mode_block.get('models', {}).items():
+                if not metrics:  # Skip missing (e.g., pruned models when only RF trained)
+                    continue
                 lines.append(
                     f"| {model_key} | {val_n} | {pre_n}→{post_n} | {_fmt(metrics.get('accuracy'))} | {_fmt(metrics.get('f1_weighted'))} | {_fmt(metrics.get('f1_macro'))} | {_fmt(metrics.get('auc_weighted'))} | {_fmt(metrics.get('auc_macro'))} | {_fmt(metrics.get('auc_micro'))} |"
                 )
             # Confusion matrices
             cms = []
             for model_key, metrics in mode_block.get('models', {}).items():
+                if not metrics:
+                    continue
                 cm_path = metrics.get('confusion_matrix_path')
                 cm_svg = metrics.get('confusion_matrix_path_svg')
                 # Prefer SVG if exists on disk
@@ -279,14 +283,12 @@ def build_markdown_en(consolidated, reports_dir):
                         i += 2
                     else:
                         model_key, rel_path = cms[i]
-                        lines.append('<div style="display:flex; gap:12px; align-items:flex-start;">')
-                        lines.append('<figure style="flex:1; margin:0; display:flex; justify-content:center;">')
-                        lines.append('<div style="width:70%;">')
+                        # Single confusion matrix: center at same width as a half-row item (~48%)
+                        lines.append('<div style="display:flex; gap:12px; align-items:flex-start; justify-content:center;">')
+                        lines.append('<figure style="flex:0 0 48%; max-width:48%; margin:0;">')
                         lines.append(f'<img src="{rel_path}" style="width:100%; max-width:100%;" />')
-                        lines.append(f'<div style="text-align:center; font-size: 13px; margin-top:6px;">Confusion Matrix: {model_key}</div>')
-                        lines.append('</div>')
+                        lines.append(f'<figcaption style="text-align:center; font-size: 13px; margin-top:6px;">Confusion Matrix: {model_key}</figcaption>')
                         lines.append('</figure>')
-                        lines.append('<figure style="flex:1; margin:0;">&nbsp;</figure>')
                         lines.append('</div>')
                         lines.append("")
                         i += 1
@@ -453,6 +455,8 @@ def build_markdown_kr(consolidated, reports_dir):
             lines.append("| 모델 | 검증 N | 학습 N (전→후) | 정확도 | F1 (가중치) | F1 (매크로) | AUC (가중치) | AUC (매크로) | AUC (마이크로) |")
             lines.append("|------|--------|-----------------|--------|------------|------------|--------------|--------------|----------------|")
             for model_key, metrics in mode_block.get('models', {}).items():
+                if not metrics:
+                    continue
                 lines.append(
                     f"| {model_key} | {val_n} | {pre_n}→{post_n} | {_fmt(metrics.get('accuracy'))} | {_fmt(metrics.get('f1_weighted'))} | {_fmt(metrics.get('f1_macro'))} | {_fmt(metrics.get('auc_weighted'))} | {_fmt(metrics.get('auc_macro'))} | {_fmt(metrics.get('auc_micro'))} |"
                 )
@@ -486,14 +490,12 @@ def build_markdown_kr(consolidated, reports_dir):
                         i += 2
                     else:
                         model_key, rel_path = cms[i]
-                        lines.append('<div style="display:flex; gap:12px; align-items:flex-start;">')
-                        lines.append('<figure style="flex:1; margin:0; display:flex; justify-content:center;">')
-                        lines.append('<div style="width:70%;">')
+                        # 단일 혼동 행렬: 반열(약 48%) 크기로 중앙 정렬
+                        lines.append('<div style="display:flex; gap:12px; align-items:flex-start; justify-content:center;">')
+                        lines.append('<figure style="flex:0 0 48%; max-width:48%; margin:0;">')
                         lines.append(f'<img src="{rel_path}" style="width:100%; max-width:100%;" />')
-                        lines.append(f'<div style="text-align:center; font-size: 13px; margin-top:6px;">혼동 행렬: {model_key}</div>')
-                        lines.append('</div>')
+                        lines.append(f'<figcaption style="text-align:center; font-size: 13px; margin-top:6px;">혼동 행렬: {model_key}</figcaption>')
                         lines.append('</figure>')
-                        lines.append('<figure style="flex:1; margin:0;">&nbsp;</figure>')
                         lines.append('</div>')
                         lines.append("")
                         i += 1

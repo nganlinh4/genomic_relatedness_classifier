@@ -81,6 +81,7 @@ IBD 지표와 분포 통계(feature)로 친족 관계를 예측하는 모델을 
 옵션:
 - `--epochs <int>`: 에포크 수 (기본값 1 또는 `$env:TRAIN_EPOCHS`)
 - `--special-epochs <int>`: UN 포함 + 과샘플링(smote/overunder)인 경우에만 별도 에포크 적용
+- `--only-randomforest`: 랜덤 포레스트만 학습/평가(MLP/CNN 생략)
 - `--train-device cuda`: 학습 디바이스 (정책상 CPU 비허용)
 - `--eval-device cuda`: 평가 디바이스 (정책상 CPU 비허용)
 

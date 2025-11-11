@@ -7,7 +7,7 @@ from typing import Optional
 python_exe = os.path.join(".venv", "Scripts" if sys.platform == "win32" else "bin", "python.exe" if sys.platform == "win32" else "python")
 
 
-def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], special_epochs: Optional[str], prune: bool):
+def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], special_epochs: Optional[str], prune: bool, only_rf: bool):
     print(f"Running Step 1: Data Preparation for {ds}")
     # Two scenarios: included (default) and noUN (drop UN)
     subprocess.run([python_exe, "scripts/data_prep.py", ds], check=True)
@@ -36,11 +36,15 @@ def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str],
                 train_cmd += ["--train-device", train_device]
             if special_epochs:
                 train_cmd += ["--special-epochs", str(special_epochs)]
+            if only_rf:
+                train_cmd += ["--only-randomforest"]
             subprocess.run(train_cmd, check=True)
 
             eval_cmd = [python_exe, "scripts/evaluate_models.py", ds, mode, "--scenario", scenario]
             if eval_device:
                 eval_cmd += ["--eval-device", eval_device]
+            if only_rf:
+                eval_cmd += ["--only-randomforest"]
             subprocess.run(eval_cmd, check=True)
 
     print(f"Building consolidated report for {ds}")
@@ -60,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None, help='Evaluation device (cuda recommended)')
     parser.add_argument('--special-epochs', type=int, default=None, help='Epoch override only for UN-included + oversampling modes (smote/overunder)')
     parser.add_argument('--prune', action='store_true', help='Delete per-mode evaluation JSONs after consolidation')
+    parser.add_argument('--only-randomforest', action='store_true', help='Train/evaluate only Random Forest (skip MLP/CNN)')
     args = parser.parse_args()
 
     # Fallback to env for epochs if not provided
@@ -69,6 +74,6 @@ if __name__ == "__main__":
 
     if args.dataset.lower() == 'all':
         for ds in ["cM_1", "cM_3", "cM_6"]:
-            run_for_dataset(ds, epochs, train_device, eval_device, args.special_epochs, args.prune)
+            run_for_dataset(ds, epochs, train_device, eval_device, args.special_epochs, args.prune, args.only_randomforest)
     else:
-        run_for_dataset(args.dataset, epochs, train_device, eval_device, args.special_epochs, args.prune)
+        run_for_dataset(args.dataset, epochs, train_device, eval_device, args.special_epochs, args.prune, args.only_randomforest)

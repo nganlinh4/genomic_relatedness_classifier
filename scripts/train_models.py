@@ -37,6 +37,7 @@ parser.add_argument('--scenario', type=str, choices=['included','noUN'], default
 parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs (default from TRAIN_EPOCHS env or 1)')
 parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None, help='Training device (default cuda; required to be available)')
 parser.add_argument('--special-epochs', type=int, default=None, help='Epoch override for UN-included + oversampling modes (smote/overunder)')
+parser.add_argument('--only-randomforest', action='store_true', help='Train only Random Forest (skip MLP/CNN)')
 args = parser.parse_args()
 
 dataset = args.dataset
@@ -294,22 +295,22 @@ def train_model(model, train_loader, val_loader, y_train, imbalance_mode, epochs
         torch.cuda.synchronize()
         print(f"Epoch {epoch+1}/{epochs}, Train Loss: {tr_loss:.4f}, Val Loss: {v_loss:.4f}, Val Acc: {v_acc:.2f}%")
 
-# Train Advanced MLP
-print("Training Advanced MLP...")
-mlp = AdvancedMLP(len(top_features), num_classes)
-train_model(mlp, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
-
-# Save MLP under models/<dataset>/<mode>/
 models_dir = os.path.join('models', dataset, scenario, imbalance_mode)
 os.makedirs(models_dir, exist_ok=True)
-torch.save(mlp.state_dict(), os.path.join(models_dir, 'mlp.pth'))
 
-# Train Advanced CNN
-print("Training Advanced 1D-CNN...")
-cnn = AdvancedCNN1D(len(top_features), num_classes)
-train_model(cnn, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
+if args.only_randomforest:
+    print("Skipping MLP/CNN training due to --only-randomforest; RandomForest is trained during evaluation.")
+else:
+    # Train Advanced MLP
+    print("Training Advanced MLP...")
+    mlp = AdvancedMLP(len(top_features), num_classes)
+    train_model(mlp, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
+    torch.save(mlp.state_dict(), os.path.join(models_dir, 'mlp.pth'))
 
-# Save CNN under models/<dataset>/<mode>/
-torch.save(cnn.state_dict(), os.path.join(models_dir, 'cnn.pth'))
+    # Train Advanced CNN
+    print("Training Advanced 1D-CNN...")
+    cnn = AdvancedCNN1D(len(top_features), num_classes)
+    train_model(cnn, train_loader, val_loader, y_train, imbalance_mode, epochs=epochs)
+    torch.save(cnn.state_dict(), os.path.join(models_dir, 'cnn.pth'))
 
-print("Models saved.")
+    print("Models saved.")

@@ -6,9 +6,10 @@
 
 #### 1단계: 데이터 준비 (각 cM 데이터셋)
 
-1) `merged_info.out` 처리
-- 압축 해제 후 각 라인을 파싱해 분포 통계(평균, 표준편차, 분위수 등)를 컬럼으로 구성
-- `pair` 단위 한 줄(DataFrame 한 행)로 정리
+1) `merged_info.out` + `merged_added_info.out` 처리
+- 두 파일 각각을 파싱(라인: `[pair] allChr key:val ...`)하여 통계 컬럼 생성
+- `pair` 기준 outer 머지, 중복 키는 `_added` 접미사로 구분
+- 최종 하나의 DataFrame (행=pair, 열=모든 통계 특성)
 
 2) `model_input_with_kinship_filtered_<dataset>.csv` 처리
 - 필수 컬럼만 사용: `pair`, `IBD1_len`, `IBD2_len`, `R1`, `R2`, `Num_Segs`, `Total_len`, 타깃 `kinship`

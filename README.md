@@ -88,6 +88,7 @@ Run for all datasets:
 Optional flags for control (CLI overrides env vars):
 - `--epochs <int>` — number of training epochs (default 1 or `$env:TRAIN_EPOCHS`)
 - `--special-epochs <int>` — override epochs only for UN-included + oversampling (smote/overunder)
+- `--only-randomforest` — train/evaluate only Random Forest (skip MLP/CNN)
 - `--train-device cuda` — training device (CUDA is required; CPU is disabled by policy)
 - `--eval-device cuda` — evaluation device (CUDA is required; CPU is disabled by policy)
 

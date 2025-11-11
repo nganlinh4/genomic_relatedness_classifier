@@ -13,30 +13,44 @@ def main():
     dataset = args.dataset
     raw_csv = os.path.join('data', 'raw', f'model_input_with_kinship_filtered_{dataset}.csv')
     merged_info_path = os.path.join('data', 'raw', 'merged_info.out')
+    merged_added_path = os.path.join('data', 'raw', 'merged_added_info.out')
     scenario_suffix = '_noUN' if args.drop_un else ''
     out_csv = os.path.join('data', 'processed', f'merged_{dataset}{scenario_suffix}.csv')
 
-    # Parse merged_info.out
-    data = []
-    with open(merged_info_path, 'r') as f:
-        for line in f:
-            parts = line.strip().split()
-            if not parts:
-                continue
-            pair = parts[0].strip('[]')
-            stats = {'pair': pair}
-            for part in parts[2:]:  # skip pair and allChr
-                if ':' not in part:
+    def parse_stats_file(path):
+        rows = []
+        if not os.path.exists(path):
+            print(f"Warning: stats file missing: {path}")
+            return pd.DataFrame(columns=['pair'])
+        with open(path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts:
                     continue
-                key, val = part.split(':', 1)
-                try:
-                    stats[key] = float(val)
-                except ValueError:
-                    # Skip if value not float-parsable
-                    continue
-            data.append(stats)
+                pair = parts[0].strip('[]')
+                stats = {'pair': pair}
+                for part in parts[2:]:  # skip pair and allChr token
+                    if ':' not in part:
+                        continue
+                    key, val = part.split(':', 1)
+                    try:
+                        stats[key] = float(val)
+                    except ValueError:
+                        continue
+                rows.append(stats)
+        return pd.DataFrame(rows)
 
-    df_merged = pd.DataFrame(data)
+    df_primary = parse_stats_file(merged_info_path)
+    df_added = parse_stats_file(merged_added_path)
+
+    # Merge the two stats sets on 'pair'; suffix collisions distinctly
+    if not df_primary.empty and not df_added.empty:
+        df_merged = pd.merge(df_primary, df_added, on='pair', how='outer', suffixes=('', '_added'))
+    elif not df_primary.empty:
+        df_merged = df_primary
+    else:
+        df_merged = df_added
+    print(f"Primary stats cols: {len(df_primary.columns) - 1}, Added stats cols: {len(df_added.columns) - 1}, Final stats cols: {len(df_merged.columns) - 1}")
 
     # Load raw labeled pairs for this dataset
     sep = '\t' if raw_csv.endswith('.tsv') or raw_csv.endswith('.txt') else None

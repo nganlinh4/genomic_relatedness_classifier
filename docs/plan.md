@@ -6,10 +6,11 @@ The goal is to build and evaluate models that predict kinship. The features are 
 
 #### Step 1: Data Preparation (for each cM dataset)
 
-1.  **Process `merged_info.out`:**
+1.  **Process `merged_info.out` and `merged_added_info.out`:**
     *   Unzip and load the file (if needed).
-    *   Parse each line as: `[pair] allChr <key1>:<val1> <key2>:<val2> ...` and build a row per pair with distributional features as columns (mean, std, percentiles, etc.).
-    *   Produce a pandas DataFrame with one row per `pair` and columns for all parsed statistics (no transpose step).
+    *   Parse each line as: `[pair] allChr <key1>:<val1> <key2>:<val2> ...` and build a row per pair with distributional features as columns (mean, std, percentiles, etc.). Apply the same parsing to `merged_added_info.out`.
+    *   Merge the two stats tables on `pair` (outer at feature level), resolving key collisions with `_added` suffix.
+    *   Produce a pandas DataFrame with one row per `pair` and combined columns for all parsed statistics (no transpose step).
 
 2.  **Process `model_input_with_kinship_*.csv`:**
     *   Load the `model_input_with_kinship_filtered_<dataset>.csv` file.

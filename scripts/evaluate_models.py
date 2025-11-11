@@ -43,6 +43,7 @@ parser.add_argument('dataset', type=str, help='cM_1, cM_3, cM_6')
 parser.add_argument('imbalance_mode', type=str, choices=['zero','weighted','smote','overunder'], help='imbalance handling mode')
 parser.add_argument('--scenario', type=str, choices=['included','noUN'], default='included', help='Scenario: included (retain UN) or noUN (drop UN)')
 parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None, help='Evaluation device (default cuda; required to be available)')
+parser.add_argument('--only-randomforest', action='store_true', help='Evaluate only Random Forest (skip MLP/CNN load)')
 args = parser.parse_args()
 
 dataset = args.dataset
@@ -156,16 +157,26 @@ class AdvancedCNN1D(nn.Module):
 input_size = len(top_features)
 num_classes = len(le.classes_)
 
-# Load models
-mlp = AdvancedMLP(input_size, num_classes).to(device)
-mlp_path = os.path.join('models', dataset, scenario, imbalance_mode, 'mlp.pth')
-mlp.load_state_dict(torch.load(mlp_path, map_location=device))
-mlp.eval()
-
-cnn = AdvancedCNN1D(input_size, num_classes).to(device)
-cnn_path = os.path.join('models', dataset, scenario, imbalance_mode, 'cnn.pth')
-cnn.load_state_dict(torch.load(cnn_path, map_location=device))
-cnn.eval()
+mlp = None
+cnn = None
+mlp_metrics = None
+cnn_metrics = None
+if not args.only_randomforest:
+    # Load models if present; if missing, warn and skip
+    mlp_path = os.path.join('models', dataset, scenario, imbalance_mode, 'mlp.pth')
+    if os.path.exists(mlp_path):
+        mlp = AdvancedMLP(input_size, num_classes).to(device)
+        mlp.load_state_dict(torch.load(mlp_path, map_location=device))
+        mlp.eval()
+    else:
+        print(f"Warning: MLP weights not found at {mlp_path}; skipping MLP evaluation.")
+    cnn_path = os.path.join('models', dataset, scenario, imbalance_mode, 'cnn.pth')
+    if os.path.exists(cnn_path):
+        cnn = AdvancedCNN1D(input_size, num_classes).to(device)
+        cnn.load_state_dict(torch.load(cnn_path, map_location=device))
+        cnn.eval()
+    else:
+        print(f"Warning: CNN weights not found at {cnn_path}; skipping CNN evaluation.")
 
 # Evaluate function
 def _safe_multiclass_auc(y_true_np: np.ndarray, probs_np: np.ndarray, n_classes: int):
@@ -252,9 +263,10 @@ def evaluate_model(model, X, y, model_key, pretty_name):
         'per_class': cls_report
     }
 
-# Evaluate DL models
-mlp_metrics = evaluate_model(mlp, X_val_tensor, y_val_tensor, 'mlp', f"Advanced MLP")
-cnn_metrics = evaluate_model(cnn, X_val_tensor, y_val_tensor, 'cnn', f"Advanced 1D-CNN")
+if mlp is not None:
+    mlp_metrics = evaluate_model(mlp, X_val_tensor, y_val_tensor, 'mlp', f"Advanced MLP")
+if cnn is not None:
+    cnn_metrics = evaluate_model(cnn, X_val_tensor, y_val_tensor, 'cnn', f"Advanced 1D-CNN")
 
 # Evaluate Random Forest baseline
 rf = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -352,12 +364,15 @@ results = {
     'train_class_distribution_before': {le.classes_[i]: int((y_train == i).sum()) for i in range(len(le.classes_))},
     'train_samples_after': None,
     'train_class_distribution_after': None,
-    'models': {
-        'MLP': mlp_metrics,
-        'CNN': cnn_metrics,
-        'RandomForest': rf_metrics
-    }
+    'models': {}
 }
+
+# Populate models dict conditionally
+if mlp_metrics is not None:
+    results['models']['MLP'] = mlp_metrics
+if cnn_metrics is not None:
+    results['models']['CNN'] = cnn_metrics
+results['models']['RandomForest'] = rf_metrics
 
 # Compute post-sampling train counts for reporting (mirrors training policy)
 try:
