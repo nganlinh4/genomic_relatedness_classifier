@@ -102,8 +102,8 @@ if imbalance_mode in ['smote', 'overunder']:
     if imbalance_mode == 'smote':
         target_per_class = max_count
         sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes)}
-    else:  # overunder -> aim for 300/class; only oversample those below 300
-        target_per_class = 300
+    else:  # overunder -> aim for 400/class; only oversample those below 400
+        target_per_class = 400
         sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes) if int(class_counts[cls_idx]) < target_per_class}
     # Apply SMOTE only if any class needs oversampling
     if sampling_strategy:
@@ -130,7 +130,7 @@ if imbalance_mode in ['smote', 'overunder']:
             except Exception:
                 pass
         print(f"After overunder clean-up ({sampler_used}) samples: {len(y_res)}")
-    # Clip any slight overshoot in counts for overunder to 300 (rare) by random downsampling
+    # Clip any slight overshoot in counts for overunder to 400 (rare) by random downsampling
     if imbalance_mode == 'overunder':
         final_indices = []
         y_res_np = np.array(y_res)
@@ -142,7 +142,7 @@ if imbalance_mode in ['smote', 'overunder']:
         final_indices = np.array(final_indices)
         X_res = X_res[final_indices]
         y_res = y_res[final_indices]
-        print(f"Post clip (overunder) samples: {len(y_res)}")
+        print(f"Post clip (overunder, target={target_per_class}) samples: {len(y_res)}")
     X_train_res, y_train_res = X_res, y_res
 else:
     X_train_res, y_train_res = X_train, y_train

@@ -43,8 +43,8 @@ def main():
         .sort_values('importance', ascending=False)
     )
 
-    # Select top 50 features
-    top_features = feature_importance_df.head(50)['feature'].tolist()
+    # Select top 75 features
+    top_features = feature_importance_df.head(75)['feature'].tolist()
 
     # Fit scaler on selected features
     scaler_selected = StandardScaler()
@@ -98,7 +98,7 @@ def main():
         pass
     plt.close()
 
-    print(f"Top 50 selected features saved to data/processed/top_features_{dataset}{suffix}.pkl")
+    print(f"Top 75 selected features saved to data/processed/top_features_{dataset}{suffix}.pkl")
     print(f"Scaler saved to data/processed/scaler_{dataset}{suffix}.pkl")
     print(f"Feature importance plot saved to {out_path}")
     print("Top 10 features:")
