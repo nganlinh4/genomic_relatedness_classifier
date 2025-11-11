@@ -270,13 +270,25 @@ def build_markdown_en(consolidated, reports_dir):
             if vcd:
                 parts = [f"{k}={v}" for k, v in vcd.items()]
                 lines.append(f"Class distribution: {', '.join(parts)}\n")
-            # Training meta
+            # Training info: prefer RF training time when RF-only runs to avoid misleading deep-model epochs/time
             tmeta = mode_block.get('training_meta') or {}
-            if tmeta:
-                ep = tmeta.get('epochs')
+            models_block = mode_block.get('models') or {}
+            rf_metrics = models_block.get('RandomForest') or {}
+            rf_time = rf_metrics.get('train_duration_seconds')
+            only_rf = bool(tmeta.get('only_randomforest'))
+            if only_rf and rf_time is not None:
                 tdev = tmeta.get('device')
-                dur = tmeta.get('duration_seconds')
-                lines.append(f"Training: epochs={ep}, device={tdev}, time={dur:.1f}s  ")
+                lines.append(f"Training: RandomForest time={rf_time:.1f}s, device={tdev}  ")
+            else:
+                # Fallback to generic metadata when deep models were trained (or RF time missing)
+                if tmeta:
+                    ep = tmeta.get('epochs')
+                    tdev = tmeta.get('device')
+                    dur = tmeta.get('duration_seconds')
+                    try:
+                        lines.append(f"Training: epochs={ep}, device={tdev}, time={float(dur):.1f}s  ")
+                    except Exception:
+                        lines.append(f"Training: epochs={ep}, device={tdev}  ")
             pre_n = mode_block.get('train_samples_before')
             post_n = mode_block.get('train_samples_after')
             tcd_pre = mode_block.get('train_class_distribution_before', {})
@@ -539,12 +551,24 @@ def build_markdown_kr(consolidated, reports_dir):
             if vcd:
                 parts = [f"{k}={v}" for k, v in vcd.items()]
                 lines.append(f"클래스 분포: {', '.join(parts)}\n")
+            # RF-only일 때는 RF 학습 시간으로 표기 (딥러닝 에포크/시간은 오해 소지)
             tmeta = mode_block.get('training_meta') or {}
-            if tmeta:
-                ep = tmeta.get('epochs')
+            models_block = mode_block.get('models') or {}
+            rf_metrics = models_block.get('RandomForest') or {}
+            rf_time = rf_metrics.get('train_duration_seconds')
+            only_rf = bool(tmeta.get('only_randomforest'))
+            if only_rf and rf_time is not None:
                 tdev = tmeta.get('device')
-                dur = tmeta.get('duration_seconds')
-                lines.append(f"학습: 에포크={ep}, 디바이스={tdev}, 시간={dur:.1f}초  ")
+                lines.append(f"학습: RandomForest 시간={rf_time:.1f}초, 디바이스={tdev}  ")
+            else:
+                if tmeta:
+                    ep = tmeta.get('epochs')
+                    tdev = tmeta.get('device')
+                    dur = tmeta.get('duration_seconds')
+                    try:
+                        lines.append(f"학습: 에포크={ep}, 디바이스={tdev}, 시간={float(dur):.1f}초  ")
+                    except Exception:
+                        lines.append(f"학습: 에포크={ep}, 디바이스={tdev}  ")
             pre_n = mode_block.get('train_samples_before')
             post_n = mode_block.get('train_samples_after')
             tcd_pre = mode_block.get('train_class_distribution_before', {})
