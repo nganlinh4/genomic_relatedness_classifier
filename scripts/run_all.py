@@ -53,6 +53,25 @@ def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str],
         report_cmd.append("--prune")
     subprocess.run(report_cmd, check=True)
 
+    # Zip probability tables (if any) into a single archive per dataset
+    try:
+        import zipfile
+        tables_dir = os.path.join('reports', ds, 'tables')
+        if os.path.isdir(tables_dir):
+            zip_path = os.path.join('reports', ds, f'probabilities_{ds}.zip')
+            with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(tables_dir):
+                    for fn in files:
+                        if fn.lower().endswith('.csv'):
+                            full_path = os.path.join(root, fn)
+                            arcname = os.path.relpath(full_path, start=tables_dir)
+                            zf.write(full_path, arcname)
+            print(f"Zipped probability tables to {zip_path}")
+        else:
+            print(f"No probability tables found at {tables_dir}; skipping zip.")
+    except Exception as e:
+        print(f"Warning: failed to create probabilities zip for {ds}: {e}")
+
     print(f"All steps completed for {ds}")
 
 

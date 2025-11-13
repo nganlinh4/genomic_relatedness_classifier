@@ -76,7 +76,12 @@ X_scaled = scaler.transform(X)
 
 # Split into train/val (same as training, but since no test, evaluate on val)
 from sklearn.model_selection import train_test_split
-X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+# Split X, y, and pair ids together to keep rows aligned
+pairs = df['pair'].astype(str).values
+X_train, X_val, y_train, y_val, pair_train, pair_val = train_test_split(
+    X_scaled, y_encoded, pairs,
+    test_size=0.2, random_state=42, stratify=y_encoded
+)
 
 # Device selection: enforce CUDA by default; error if not available when requested
 eval_device_env = (args.eval_device or os.environ.get('EVAL_DEVICE', 'cuda')).lower()
@@ -261,7 +266,11 @@ def evaluate_model(model, X, y, model_key, pretty_name):
         'auc_micro': auc_micro,
     'confusion_matrix_path': cm_path,
     'confusion_matrix_path_svg': cm_path_svg if os.path.exists(cm_path_svg) else None,
-        'per_class': cls_report
+        'per_class': cls_report,
+        # Provide probabilities and predictions for optional export by caller
+        '_probs': probs,
+        '_predicted': predicted,
+        '_y_true': y_true
     }
 
 if mlp is not None:
@@ -292,6 +301,7 @@ try:
     auc_w_rf, auc_m_rf, auc_micro_rf = _safe_multiclass_auc(y_val, probs_full, num_classes)
 except Exception:
     auc_w_rf = auc_m_rf = auc_micro_rf = None
+    probs_full = None
 
 # Confusion matrix and report
 cm_rf = confusion_matrix(y_val, y_pred_rf)
@@ -356,6 +366,49 @@ rf_metrics = {
     'train_duration_seconds': rf_train_duration_seconds
 }
 
+# Export per-sample probability tables (validation set) for each evaluated model
+def _export_probabilities(model_key: str, probs_np: np.ndarray, y_pred_idx: np.ndarray, y_true_idx: np.ndarray, pair_ids: np.ndarray):
+    try:
+        out_dir_tables = os.path.join('reports', dataset, 'tables', scenario, imbalance_mode)
+        os.makedirs(out_dir_tables, exist_ok=True)
+        # Build DataFrame with pair, true_label, predicted_label, and per-class probabilities
+        cols = ['pair', 'true_label', 'predicted_label']
+        class_labels = [str(c) for c in le.classes_]
+        proba_cols = [f'proba_{lbl}' for lbl in class_labels]
+        cols.extend(proba_cols)
+        true_str = [str(le.classes_[i]) for i in y_true_idx]
+        pred_str = [str(le.classes_[i]) for i in y_pred_idx]
+        data_rows = []
+        for i in range(len(pair_ids)):
+            row = [str(pair_ids[i]), true_str[i], pred_str[i]]
+            if probs_np is not None and probs_np.shape[1] == len(class_labels):
+                row.extend([float(x) for x in probs_np[i, :]])
+            else:
+                # Fallback: fill zeros if probabilities missing
+                row.extend([0.0] * len(class_labels))
+            data_rows.append(row)
+        import pandas as pd
+        df_probs = pd.DataFrame(data_rows, columns=cols)
+        fname = f"{model_key.lower()}_val_probabilities.csv"
+        out_path = os.path.join(out_dir_tables, fname)
+        df_probs.to_csv(out_path, index=False)
+    except Exception as e:
+        print(f"Warning: failed to export probabilities for {model_key}: {e}")
+
+# MLP/CNN exports if present
+if mlp_metrics is not None and '_probs' in mlp_metrics:
+    _export_probabilities('mlp', mlp_metrics['_probs'], mlp_metrics['_predicted'], mlp_metrics['_y_true'], pair_val)
+if cnn_metrics is not None and '_probs' in cnn_metrics:
+    _export_probabilities('cnn', cnn_metrics['_probs'], cnn_metrics['_predicted'], cnn_metrics['_y_true'], pair_val)
+
+# RF export (use probs_full if available)
+if probs_full is not None:
+    _export_probabilities('rf', probs_full, y_pred_rf, y_val, pair_val)
+else:
+    # Still export structure with zeros if probs missing
+    zeros = np.zeros((len(pair_val), num_classes), dtype=float)
+    _export_probabilities('rf', zeros, y_pred_rf, y_val, pair_val)
+
 # Save metrics to JSON
 results = {
     'dataset': dataset,
@@ -388,7 +441,7 @@ try:
             target_per_class = max_count
             sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes)}
         else:
-            target_per_class = 300
+            target_per_class = 400
             sampling_strategy = {cls_idx: target_per_class for cls_idx in range(num_classes) if int(class_counts[cls_idx]) < target_per_class}
         if sampling_strategy:
             sm = SMOTE(k_neighbors=1, random_state=42, sampling_strategy=sampling_strategy)
@@ -409,7 +462,7 @@ try:
                     X_res, y_res = st.fit_resample(X_res, y_res)
                 except Exception:
                     pass
-            # Clip to exactly 300 if any cleaning overshoots
+            # Clip to exactly target_per_class if any cleaning overshoots
             final_indices = []
             for cls_idx in range(num_classes):
                 cls_mask = np.where(y_res == cls_idx)[0]
