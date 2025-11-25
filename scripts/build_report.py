@@ -86,11 +86,19 @@ def main():
         import subprocess as _subp
         npx_cmd = _shutil.which('npx') or _shutil.which('npx.cmd')
         if npx_cmd:
+            # Cross-platform font configuration
+            css_path = os.path.join(REPO_ROOT, 'font-config.css')
+            css_args = ['--css', css_path] if os.path.exists(css_path) else []
+            
             # English (default output naming by md-to-pdf)
-            _subp.run([npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}', os.path.join(out_dir, 'results.md')], check=False)
+            cmd_en = [npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}'] + css_args + [os.path.join(out_dir, 'results.md')]
+            _subp.run(cmd_en, check=False)
+            
             # Korean
-            _subp.run([npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}', os.path.join(out_dir, 'results_KR.md')], check=False)
-            print("PDFs generated via md-to-pdf (EN and KR) without explicit --output flags.")
+            cmd_kr = [npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}'] + css_args + [os.path.join(out_dir, 'results_KR.md')]
+            _subp.run(cmd_kr, check=False)
+            
+            print("PDFs generated via md-to-pdf (EN and KR) with cross-platform fonts.")
         else:
             print("npx/md-to-pdf not found on PATH; skipping PDF generation. Install Node and md-to-pdf to enable.")
     except Exception as e:

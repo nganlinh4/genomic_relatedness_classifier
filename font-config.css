@@ -1,0 +1,17 @@
+/* Font configuration for cross-platform PDF generation */
+body {
+  font-family: 'Segoe UI', 'Noto Sans CJK KR', 'Noto Sans KR', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Segoe UI', 'Noto Sans CJK KR', 'Noto Sans KR', sans-serif;
+}
+
+table, code, pre, tt {
+  font-family: 'Segoe UI', 'Noto Sans CJK KR', 'Noto Sans KR', monospace;
+}
+
+/* Ensure consistent rendering */
+* {
+  font-feature-settings: "kern" 1;
+}
