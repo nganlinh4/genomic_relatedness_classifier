@@ -86,3 +86,10 @@ data/processed/top_features_cM_*.pkl
 data/processed/scaler_cM_*_noUN.pkl
 data/processed/top_features_cM_*_noUN.pkl
 *.svg
+
+# Generated HTML dashboards and deliverables
+kinship_*.html
+kinship_*.zip
+
+# Training logs
+training_*.log

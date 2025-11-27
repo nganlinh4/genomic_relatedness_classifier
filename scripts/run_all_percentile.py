@@ -10,8 +10,8 @@ python_exe = os.path.join(".venv", "Scripts" if sys.platform == "win32" else "bi
 def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], special_epochs: Optional[str], prune: bool, only_rf: bool):
     print(f"Running Step 1: Data Preparation for {ds}")
     # Two scenarios: included (default) and noUN (drop UN)
-    subprocess.run([python_exe, "scripts/data_prep.py", ds], check=True)
-    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--drop-un"], check=True)
+    subprocess.run([python_exe, "scripts/data_prep_percentile.py", ds], check=True)
+    subprocess.run([python_exe, "scripts/data_prep_percentile.py", ds, "--drop-un"], check=True)
 
     # Clean legacy plots so final report only references organized directories
     print(f"Cleaning legacy plots for {ds}")
@@ -76,7 +76,7 @@ def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str],
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run full pipeline')
+    parser = argparse.ArgumentParser(description='Run full pipeline for percentile-based datasets')
     parser.add_argument('dataset', type=str, help="cM_1, cM_3, cM_6, cM_10 or 'all'")
     parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs (default from TRAIN_EPOCHS env or 1)')
     parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None, help='Training device (must be cuda; cpu will abort in training scripts)')
