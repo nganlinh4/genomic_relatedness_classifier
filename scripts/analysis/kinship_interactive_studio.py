@@ -1,17 +1,9 @@
-"""
-Generate fully interactive Plotly dashboard with all visualization controls.
-Single HTML file with:
-- Threshold selector dropdown
-- Interactive legend (click to hide/show kinship levels)
-- Zoom, pan, hover tooltips
-- Linear/Log scale toggle
-- No server needed
-"""
 
 import os
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def hex_to_rgba(hex_color: str, alpha: float) -> str:
@@ -93,20 +85,29 @@ def main():
         'Heavy (1cM)': 20
     }
     
-    # Store trace metadata for smoothing
+    # Store trace metadata for smoothing updates
+    # We now store data for both subplot traces per kinship
     trace_data = []
     
     print("\n" + "="*70)
-    print("Generating Interactive Plotly Studio...")
+    print("Generating Interactive Plotly Studio (Double Plot Mode)...")
     print("="*70)
 
-    # Initialize Figure
-    fig = go.Figure()
+    # Initialize Subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        vertical_spacing=0.12,
+        subplot_titles=(
+            "1. Data Manipulation: Moving Average (Standard Lines)", 
+            "2. Visual Smoothing: Spline Interpolation (Curved Lines)"
+        )
+    )
     
-    total_traces = len(thresholds) * len(kinship_levels)
-    print(f"Processing {total_traces} traces ({len(thresholds)} thresholds × {len(kinship_levels)} kinship levels)...")
+    total_logical_groups = len(thresholds) * len(kinship_levels)
+    # Total actual traces = logical groups * 2 (one for each subplot)
+    print(f"Processing {total_logical_groups} logical groups ({total_logical_groups * 2} traces)...")
 
-    trace_idx = 0
     for t_idx, threshold in enumerate(thresholds):
         print(f"\n  Threshold > {threshold} cM:")
         
@@ -117,83 +118,102 @@ def main():
             # Load Data
             df = load_percentile_file(kinship, threshold)
             
+            # Handling missing data to maintain trace alignment for buttons
             if df is None:
-                 # Add placeholder trace to maintain index alignment
-                 fig.add_trace(go.Scatter(
-                     x=[], y=[], 
-                     visible=False, 
-                     showlegend=False,
-                     hoverinfo='skip'
-                 ))
-                 trace_data.append({'smoothed_y': {}})
-                 trace_idx += 1
-                 continue
-
-            # Filter UN duplicates
-            if kinship == 'UN':
-                df = filter_un_data(df)
-
-            # Calculate Statistics
-            x_vals, y_pct_raw, y_count, total = get_distribution_data(df)
-
-            if x_vals is None:
-                # Add placeholder
-                fig.add_trace(go.Scatter(
-                    x=[], y=[], 
-                    visible=False, 
-                    showlegend=False,
-                    hoverinfo='skip'
-                ))
-                trace_data.append({'smoothed_y': {}})
-                trace_idx += 1
-                continue
+                 x_vals, y_pct_raw, y_count, total = [], [], [], 0
+            else:
+                if kinship == 'UN':
+                    df = filter_un_data(df)
+                x_vals, y_pct_raw, y_count, total = get_distribution_data(df)
+                if x_vals is None:
+                    x_vals, y_pct_raw, y_count, total = [], [], [], 0
 
             # Pre-calculate smoothed data for all smoothing levels
             smoothed_y = {}
-            for label, window in smoothing_levels.items():
-                smoothed_y[label] = apply_moving_average(y_pct_raw, window)
+            if len(y_pct_raw) > 0:
+                for label, window in smoothing_levels.items():
+                    smoothed_y[label] = apply_moving_average(y_pct_raw, window)
+                current_y = smoothed_y['None (0cM)']
+            else:
+                # Placeholder empty data
+                for label in smoothing_levels:
+                    smoothed_y[label] = []
+                current_y = []
 
-            # Add Trace with full interactivity - Area Chart with Transparency
             hex_color = colors[k_idx]
             fill_color_rgba = hex_to_rgba(hex_color, FILL_OPACITY)
             
+            # Common hover template
+            hover_txt = (
+                "<b>Kinship %s (cM > %d)</b><br>" % (kinship, threshold) +
+                "Length: %{x:.2f} cM<br>" +
+                "Percentage: %{y:.2f}%<br>" +
+                "Count: %{customdata[0]:,.0f} pairs (of %{customdata[1]:.0f} total)<br>" +
+                "<extra></extra>"
+            )
+            
+            legend_group_id = f"group_{threshold}_{kinship}"
+
+            # --- Trace 1: Top Plot (Linear / Data Manipulated) ---
             fig.add_trace(go.Scatter(
                 x=x_vals, 
-                y=smoothed_y['None (0cM)'],  # Start with unsmoothed data
+                y=current_y,
                 mode='lines',
                 fill='tozeroy',
                 fillcolor=fill_color_rgba,
                 name=f'Kinship {kinship}',
-                line=dict(color=hex_color, width=LINE_WIDTH),
+                legendgroup=legend_group_id, # Group for toggle
+                showlegend=True,             # Show in legend
+                line=dict(color=hex_color, width=LINE_WIDTH, shape='linear'),
                 visible=is_visible,
-                customdata=np.column_stack((y_count, [total]*len(y_count))),
-                hovertemplate=(
-                    "<b>Kinship %s (cM > %d)</b><br>" % (kinship, threshold) +
-                    "Length: %{x:.2f} cM<br>" +
-                    "Percentage: %{y:.2f}%<br>" +
-                    "Count: %{customdata[0]:,.0f} pairs (of %{customdata[1]:.0f} total)<br>" +
-                    "<extra></extra>"
-                )
-            ))
+                customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
+                hovertemplate=hover_txt
+            ), row=1, col=1)
             
-            # Store smoothed data for this trace
+            # Store data for trace 1 (needed for smoothing button logic)
             trace_data.append({'smoothed_y': smoothed_y})
+
+            # --- Trace 2: Bottom Plot (Spline / Visually Smoothed) ---
+            # We use the exact same data, but set shape='spline'
+            fig.add_trace(go.Scatter(
+                x=x_vals, 
+                y=current_y,
+                mode='lines',
+                fill='tozeroy',
+                fillcolor=fill_color_rgba,
+                name=f'Kinship {kinship}',
+                legendgroup=legend_group_id, # Link to top plot
+                showlegend=False,            # Hide duplicate legend item
+                line=dict(color=hex_color, width=LINE_WIDTH, shape='spline', smoothing=1.3), # Spline magic
+                visible=is_visible,
+                customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
+                hovertemplate=hover_txt
+            ), row=2, col=1)
             
-            print(f"    ✓ Kinship {kinship}: {total} pairs, max {max(y_pct_raw):.2f}%")
-            trace_idx += 1
+            # Store data for trace 2 (needed for smoothing button logic)
+            trace_data.append({'smoothed_y': smoothed_y})
+
+            if len(y_count) > 0:
+                print(f"    ✓ Kinship {kinship}: {total} pairs")
 
     # --- Create Interactive Controls ---
 
-    # 1. Threshold Dropdown Menu
     print("\nConfiguring interactive controls...")
+    
+    # 1. Threshold Dropdown Menu
+    # We have (len(thresholds) * len(kinships) * 2) total traces
+    traces_per_threshold = len(kinship_levels) * 2 # *2 for double plots
+    
     dropdown_buttons = []
     for i, threshold in enumerate(thresholds):
-        # Create visibility array
+        # Create visibility array for ALL traces
+        total_traces = len(trace_data)
         visibility = [False] * total_traces
         
-        # Set visibility for this threshold's traces
-        start_idx = i * len(kinship_levels)
-        end_idx = start_idx + len(kinship_levels)
+        # Calculate range for this threshold
+        start_idx = i * traces_per_threshold
+        end_idx = start_idx + traces_per_threshold
+        
         for j in range(start_idx, end_idx):
             visibility[j] = True
         
@@ -208,24 +228,35 @@ def main():
         dropdown_buttons.append(button)
 
     # 2. Scale Toggle Buttons (Linear vs Log)
+    # Must update yaxis (top) and yaxis2 (bottom)
     scale_buttons = [
         dict(
             label="Linear Scale",
             method="relayout",
-            args=[{"yaxis.type": "linear", "yaxis.title": "Percentage (%)"}]
+            args=[{
+                "yaxis.type": "linear", "yaxis.title": "Percentage (%)",
+                "yaxis2.type": "linear", "yaxis2.title": "Percentage (%)"
+            }]
         ),
         dict(
             label="Log Scale",
             method="relayout",
-            args=[{"yaxis.type": "log", "yaxis.title": "Percentage (%) [log scale]"}]
+            args=[{
+                "yaxis.type": "log", "yaxis.title": "Percentage (%) [log scale]",
+                "yaxis2.type": "log", "yaxis2.title": "Percentage (%) [log scale]"
+            }]
         )
     ]
     
     # 3. Smoothing Control Buttons
+    # Updates 'y' data for BOTH plots.
+    # Top plot becomes Smooth Data + Linear Line.
+    # Bottom plot becomes Smooth Data + Spline Line (Double smooth).
     smoothing_buttons = []
     for s_label, window in smoothing_levels.items():
         new_y_values = []
         for data_point in trace_data:
+            # trace_data contains entries for both top and bottom traces sequentially
             if not data_point['smoothed_y']:
                 new_y_values.append(None)
             else:
@@ -238,7 +269,7 @@ def main():
         )
         smoothing_buttons.append(button)
 
-    # Layout with controls
+    # Layout Configuration
     fig.update_layout(
         title={
             "text": "Kinship Distribution Analysis (Threshold > 1 cM)",
@@ -246,66 +277,6 @@ def main():
             "xanchor": "center",
             "font": {"size": 20}
         },
-        xaxis=dict(
-            title="Length (centiMorgans)",
-            showgrid=True,
-            zeroline=False,
-            showline=True,
-            linewidth=1,
-            linecolor='#cccccc'
-        ),
-        yaxis=dict(
-            title="Percentage (%)",
-            showgrid=True,
-            zeroline=False,
-            showline=True,
-            linewidth=1,
-            linecolor='#cccccc'
-        ),
-        updatemenus=[
-             # Threshold Selector
-             dict(
-                 buttons=dropdown_buttons,
-                 direction="down",
-                 pad={"r": 10, "t": 10},
-                 showactive=True,
-                 x=0.0,
-                 xanchor="left",
-                 y=1.35,
-                 yanchor="top",
-                 bgcolor="#ffffff",
-                 bordercolor="#cccccc",
-                 borderwidth=1
-             ),
-             # Scale Toggle
-             dict(
-                 buttons=scale_buttons,
-                 direction="right",
-                 pad={"r": 10, "t": 10},
-                 showactive=True,
-                 x=1.0,
-                 xanchor="right",
-                 y=1.35,
-                 yanchor="top",
-                 bgcolor="#ffffff",
-                 bordercolor="#cccccc",
-                 borderwidth=1
-             ),
-             # Smoothing Control
-             dict(
-                 buttons=smoothing_buttons,
-                 direction="right",
-                 pad={"r": 10, "t": 10},
-                 showactive=True,
-                 x=0.5,
-                 xanchor="center",
-                 y=1.35,
-                 yanchor="top",
-                 bgcolor="#ffffff",
-                 bordercolor="#cccccc",
-                 borderwidth=1
-             )
-         ],
         hovermode="x unified",
         template="plotly_white",
         legend=dict(
@@ -316,52 +287,70 @@ def main():
             x=1.01,
             bgcolor="rgba(255, 255, 255, 0.8)",
             bordercolor="#cccccc",
-            borderwidth=1
+            borderwidth=1,
+            itemclick="toggleothers", # Clicking one toggles others in group? Default behavior handles groups well.
+            itemdoubleclick="toggle"
         ),
-        margin=dict(
-             l=80,
-             r=200,  # Extra space for legend
-             t=180,  # Space for controls
-             b=80
-         ),
+        margin=dict(l=80, r=200, t=180, b=80),
         plot_bgcolor="rgba(240, 240, 240, 0.5)",
         paper_bgcolor="white",
         width=1400,
-        height=700
+        height=1000, # Increased height for two plots
+        
+        # Updatemenus (Controls)
+        updatemenus=[
+             # Threshold Selector
+             dict(
+                 buttons=dropdown_buttons,
+                 direction="down",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=0.0, xanchor="left",
+                 y=1.15, yanchor="top",
+                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
+             ),
+             # Scale Toggle
+             dict(
+                 buttons=scale_buttons,
+                 direction="right",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=1.0, xanchor="right",
+                 y=1.15, yanchor="top",
+                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
+             ),
+             # Smoothing Control
+             dict(
+                 buttons=smoothing_buttons,
+                 direction="right",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=0.5, xanchor="center",
+                 y=1.15, yanchor="top",
+                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
+             )
+         ]
     )
 
-    # Annotations for button labels
+    # Axis Titles
+    fig.update_xaxes(title_text="Length (centiMorgans)", showgrid=True, row=1, col=1)
+    fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=1, col=1)
+    
+    fig.update_xaxes(title_text="Length (centiMorgans)", showgrid=True, row=2, col=1)
+    fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=2, col=1)
+
+    # Annotations for button labels (adjusted Y position)
     fig.add_annotation(
         text="<b>Select Threshold:</b>",
-        x=0.0,
-        y=1.42,
-        xref="paper",
-        yref="paper",
-        xanchor="left",
-        showarrow=False,
-        font=dict(size=12)
+        x=0.0, y=1.20, xref="paper", yref="paper", xanchor="left", showarrow=False, font=dict(size=12)
     )
-    
     fig.add_annotation(
         text="<b>Scale:</b>",
-        x=1.0,
-        y=1.42,
-        xref="paper",
-        yref="paper",
-        xanchor="right",
-        showarrow=False,
-        font=dict(size=12)
+        x=1.0, y=1.20, xref="paper", yref="paper", xanchor="right", showarrow=False, font=dict(size=12)
     )
-    
     fig.add_annotation(
-        text="<b>Smoothing:</b>",
-        x=0.5,
-        y=1.42,
-        xref="paper",
-        yref="paper",
-        xanchor="center",
-        showarrow=False,
-        font=dict(size=12)
+        text="<b>Data Smoothing (Pre-processing):</b>",
+        x=0.5, y=1.20, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12)
     )
 
     # Save to HTML
@@ -390,11 +379,9 @@ def main():
     print("\n" + "="*70)
     print("How to use:")
     print("  1. Open kinship_interactive_studio.html in any web browser")
-    print("  2. Use dropdown to switch between thresholds (cM > 1, 3, 6, 10)")
-    print("  3. Click legend entries to toggle kinship levels on/off")
-    print("  4. Click 'Linear Scale' or 'Log Scale' to change Y-axis")
-    print("  5. Hover over lines to see exact values")
-    print("  6. Click and drag to zoom, double-click to reset")
+    print("  2. Top plot shows raw/data-smoothed lines (Linear)")
+    print("  3. Bottom plot shows visually smoothed lines (Spline)")
+    print("  4. Clicking legend toggles both plots simultaneously")
     print("="*70 + "\n")
 
 
