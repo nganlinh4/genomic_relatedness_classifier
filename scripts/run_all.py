@@ -6,93 +6,89 @@ from typing import Optional
 
 python_exe = os.path.join(".venv", "Scripts" if sys.platform == "win32" else "bin", "python.exe" if sys.platform == "win32" else "python")
 
+def cleanup_legacy_plots(dataset: str):
+    """Inline replacement for cleanup_legacy_reports.py"""
+    base = os.path.join('reports', dataset)
+    if not os.path.isdir(base): return
+    for fname in os.listdir(base):
+        if fname.lower().endswith('.png') and (
+            fname.startswith('kinship_distribution_') or
+            fname.startswith('feature_importance_') or
+            fname.startswith('confusion_matrix_')
+        ):
+            try:
+                os.remove(os.path.join(base, fname))
+            except OSError: pass
 
-def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], special_epochs: Optional[str], prune: bool, only_rf: bool):
-    print(f"Running Step 1: Data Preparation for {ds}")
-    # Two scenarios: included (default) and noUN (drop UN)
-    subprocess.run([python_exe, "scripts/data_prep.py", ds], check=True)
-    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--drop-un"], check=True)
+def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], 
+                   special_epochs: Optional[str], prune: bool, only_rf: bool, data_type: str):
+    
+    print(f"=== Pipeline Start: {ds} (Type: {data_type}) ===")
 
-    # Clean legacy plots so final report only references organized directories
-    print(f"Cleaning legacy plots for {ds}")
-    subprocess.run([python_exe, "scripts/cleanup_legacy_reports.py", ds], check=False)
+    # Step 1: Data Prep
+    print(f"Step 1: Data Preparation")
+    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type], check=True)
+    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type, "--drop-un"], check=True)
 
-    print(f"Running Step 2: EDA for {ds}")
-    subprocess.run([python_exe, "scripts/eda.py", ds, "--scenario", "included"], check=True)
-    subprocess.run([python_exe, "scripts/eda.py", ds, "--scenario", "noUN"], check=True)
+    cleanup_legacy_plots(ds)
 
-    print(f"Running Step 3: Feature Selection for {ds}")
+    # Step 2: EDA (Moved to analysis folder)
+    print(f"Step 2: EDA")
+    # Note: Ensure scripts/analysis/eda.py exists
+    subprocess.run([python_exe, "scripts/analysis/eda.py", ds, "--scenario", "included"], check=True)
+    subprocess.run([python_exe, "scripts/analysis/eda.py", ds, "--scenario", "noUN"], check=True)
+
+    # Step 3: Feature Selection (Kept in root as it generates pickle files needed for training)
+    print(f"Step 3: Feature Selection")
     subprocess.run([python_exe, "scripts/feature_selection.py", ds, "--scenario", "included"], check=True)
     subprocess.run([python_exe, "scripts/feature_selection.py", ds, "--scenario", "noUN"], check=True)
 
+    # Step 4 & 5: Train and Evaluate
     modes = ["zero", "weighted", "smote", "overunder"]
     for scenario in ["included", "noUN"]:
         for mode in modes:
-            print(f"Running Step 4-5: Train and Evaluate for {ds} ({scenario}) with {mode}")
+            print(f"Step 4/5: Train/Eval {ds} [{scenario} - {mode}]")
+            
+            # Build Train Command
             train_cmd = [python_exe, "scripts/train_models.py", ds, mode, "--scenario", scenario]
-            if epochs:
-                train_cmd += ["--epochs", str(epochs)]
-            if train_device:
-                train_cmd += ["--train-device", train_device]
-            if special_epochs:
-                train_cmd += ["--special-epochs", str(special_epochs)]
-            if only_rf:
-                train_cmd += ["--only-randomforest"]
+            if epochs: train_cmd += ["--epochs", str(epochs)]
+            if train_device: train_cmd += ["--train-device", train_device]
+            if special_epochs: train_cmd += ["--special-epochs", str(special_epochs)]
+            if only_rf: train_cmd += ["--only-randomforest"]
             subprocess.run(train_cmd, check=True)
 
+            # Build Eval Command
             eval_cmd = [python_exe, "scripts/evaluate_models.py", ds, mode, "--scenario", scenario]
-            if eval_device:
-                eval_cmd += ["--eval-device", eval_device]
-            if only_rf:
-                eval_cmd += ["--only-randomforest"]
+            if eval_device: eval_cmd += ["--eval-device", eval_device]
+            if only_rf: eval_cmd += ["--only-randomforest"]
             subprocess.run(eval_cmd, check=True)
 
-    print(f"Building consolidated report for {ds}")
+    # Step 6: Reporting
+    print(f"Step 6: Building Report")
     report_cmd = [python_exe, "scripts/build_report.py", ds]
-    if prune:
-        report_cmd.append("--prune")
+    if prune: report_cmd.append("--prune")
     subprocess.run(report_cmd, check=True)
 
-    # Zip probability tables (if any) into a single archive per dataset
-    try:
-        import zipfile
-        tables_dir = os.path.join('reports', ds, 'tables')
-        if os.path.isdir(tables_dir):
-            zip_path = os.path.join('reports', ds, f'probabilities_{ds}.zip')
-            with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-                for root, _, files in os.walk(tables_dir):
-                    for fn in files:
-                        if fn.lower().endswith('.csv'):
-                            full_path = os.path.join(root, fn)
-                            arcname = os.path.relpath(full_path, start=tables_dir)
-                            zf.write(full_path, arcname)
-            print(f"Zipped probability tables to {zip_path}")
-        else:
-            print(f"No probability tables found at {tables_dir}; skipping zip.")
-    except Exception as e:
-        print(f"Warning: failed to create probabilities zip for {ds}: {e}")
-
-    print(f"All steps completed for {ds}")
-
+    print(f"=== Pipeline Complete: {ds} ===")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run full pipeline')
-    parser.add_argument('dataset', type=str, help="cM_1, cM_3, cM_6, cM_10 or 'all'")
-    parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs (default from TRAIN_EPOCHS env or 1)')
-    parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None, help='Training device (must be cuda; cpu will abort in training scripts)')
-    parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None, help='Evaluation device (cuda recommended)')
-    parser.add_argument('--special-epochs', type=int, default=None, help='Epoch override only for UN-included + oversampling modes (smote/overunder)')
-    parser.add_argument('--prune', action='store_true', help='Delete per-mode evaluation JSONs after consolidation')
-    parser.add_argument('--only-randomforest', action='store_true', help='Train/evaluate only Random Forest (skip MLP/CNN)')
+    parser = argparse.ArgumentParser(description='Run full genomic classification pipeline')
+    parser.add_argument('dataset', type=str, help="Dataset ID (e.g., cM_1) or 'all'")
+    parser.add_argument('--type', type=str, choices=['standard', 'percentile'], default='standard', help="Data source type")
+    parser.add_argument('--epochs', type=int, default=None)
+    parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None)
+    parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None)
+    parser.add_argument('--special-epochs', type=int, default=None)
+    parser.add_argument('--prune', action='store_true')
+    parser.add_argument('--only-randomforest', action='store_true')
     args = parser.parse_args()
 
-    # Fallback to env for epochs if not provided
+    # Env var fallbacks
     epochs = args.epochs if args.epochs is not None else os.environ.get('TRAIN_EPOCHS', '1')
-    train_device = args.train_device or os.environ.get('TRAIN_DEVICE')
-    eval_device = args.eval_device or os.environ.get('EVAL_DEVICE')
+    train_dev = args.train_device or os.environ.get('TRAIN_DEVICE')
+    eval_dev = args.eval_device or os.environ.get('EVAL_DEVICE')
 
-    if args.dataset.lower() == 'all':
-        for ds in ["cM_1", "cM_3", "cM_6", "cM_10"]:
-            run_for_dataset(ds, epochs, train_device, eval_device, args.special_epochs, args.prune, args.only_randomforest)
-    else:
-        run_for_dataset(args.dataset, epochs, train_device, eval_device, args.special_epochs, args.prune, args.only_randomforest)
+    datasets = ["cM_1", "cM_3", "cM_6", "cM_10"] if args.dataset.lower() == 'all' else [args.dataset]
+
+    for ds in datasets:
+        run_for_dataset(ds, epochs, train_dev, eval_dev, args.special_epochs, args.prune, args.only_randomforest, args.type)
