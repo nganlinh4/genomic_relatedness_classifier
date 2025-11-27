@@ -4,6 +4,22 @@ import argparse
 import pandas as pd
 import re
 
+def filter_duplicate_samples(df):
+    """
+    Filter UN kinship data to remove X-1_vs_X-2 pairs (same sample duplicates).
+    """
+    duplicate_patterns = []
+    for i in range(1, 7):
+        pattern = f"[{i}-1_vs_{i}-2]"
+        duplicate_patterns.append(pattern)
+    
+    mask = ~df['pair'].isin(duplicate_patterns)
+    original_count = len(df)
+    filtered_df = df[mask].copy()
+    removed_count = original_count - len(filtered_df)
+    print(f"  Filtered out {removed_count} duplicate sample pairs (X-1 vs X-2)")
+    return filtered_df
+
 def parse_stats_file(path):
     rows = []
     if not os.path.exists(path):
@@ -41,12 +57,8 @@ def process_percentile_mode(dataset, drop_un):
     if not os.path.exists(raw_csv):
         raise FileNotFoundError(f"Percentile input file not found: {raw_csv}")
 
-    sep = '\t' if raw_csv.endswith('.tsv') or raw_csv.endswith('.txt') else ','
-    try:
-        df_csv = pd.read_csv(raw_csv, sep=sep)
-    except pd.errors.ParserError:
-        # Fallback for weird separators
-        df_csv = pd.read_csv(raw_csv, sep='\t')
+    sep = None  # Auto-detect separator
+    df_csv = pd.read_csv(raw_csv, sep=sep, engine='python')
 
     keep_cols = ['pair', 'kinship', 'n_segment', 'mean', 'median', 'max', 'total_length']
     percentile_cols = [col for col in df_csv.columns if col.endswith('%')]
@@ -58,6 +70,9 @@ def process_percentile_mode(dataset, drop_un):
     
     if 'pair' in df_csv.columns:
         df_csv['pair'] = df_csv['pair'].astype(str).str.strip('[]')
+    
+    # Filter duplicate samples
+    df_csv = filter_duplicate_samples(df_csv)
     
     return df_csv
 
@@ -91,6 +106,9 @@ def process_standard_mode(dataset):
     keep_cols = ['pair', 'IBD1_len', 'IBD2_len', 'R1', 'R2', 'Num_Segs', 'Total_len', 'kinship']
     df_csv = df_csv[keep_cols]
     df_csv['pair'] = df_csv['pair'].astype(str).str.strip('[]')
+
+    # Filter duplicate samples
+    df_csv = filter_duplicate_samples(df_csv)
 
     df_final = pd.merge(df_csv, df_merged, on='pair', how='inner')
     return df_final

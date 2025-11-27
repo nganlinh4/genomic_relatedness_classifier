@@ -9,6 +9,23 @@ import pandas as pd
 import argparse
 
 
+def filter_duplicate_samples(df):
+    """
+    Filter UN kinship data to remove X-1_vs_X-2 pairs (same sample duplicates).
+    """
+    duplicate_patterns = []
+    for i in range(1, 7):
+        pattern = f"[{i}-1_vs_{i}-2]"
+        duplicate_patterns.append(pattern)
+    
+    mask = ~df['pair'].isin(duplicate_patterns)
+    original_count = len(df)
+    filtered_df = df[mask].copy()
+    removed_count = original_count - len(filtered_df)
+    print(f"  Removed {removed_count} duplicate sample pairs (X-1 vs X-2)")
+    return filtered_df
+
+
 def convert_merged_tsv_to_csv(threshold):
     """
     Convert merged_cm_over_X.tsv to model_input_with_kinship_filtered_cM_X_percentile.csv
@@ -42,6 +59,9 @@ def convert_merged_tsv_to_csv(threshold):
     
     # Ensure kinship is string
     df_out['kinship'] = df_out['kinship'].astype(str)
+    
+    # Filter duplicate samples (X-1 vs X-2 pairs)
+    df_out = filter_duplicate_samples(df_out)
     
     # Save
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
