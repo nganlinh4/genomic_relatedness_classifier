@@ -14,6 +14,24 @@ import numpy as np
 import plotly.graph_objects as go
 
 
+def hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Converts a hex color string to an rgba string with specified alpha."""
+    h = hex_color.lstrip('#')
+    rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    return f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {alpha})'
+
+
+def apply_moving_average(data_series: list, window: int) -> list:
+    """Applies a simple moving average to the data series."""
+    if window <= 1:
+        return data_series
+    s = pd.Series(data_series)
+    result = s.rolling(window=window, center=True, min_periods=1).mean()
+    # Forward fill then backward fill to handle NaNs at edges
+    result = result.bfill().ffill()
+    return result.tolist()
+
+
 def load_percentile_file(kinship_level, threshold):
     """Load individual percentile TSV file."""
     kinship_str = str(kinship_level)
@@ -63,6 +81,21 @@ def main():
     kinship_levels = [1, 2, 3, 4, 5, 6, 'UN']
     colors = ['#4C78A8', '#E45756', '#54A24B', '#F58518', '#B279A2', '#FF9DA6', '#9D755D']
     
+    # Area chart settings
+    FILL_OPACITY = 0.6  # 60% transparency
+    LINE_WIDTH = 2.0    # Line width for area boundaries
+    
+    # Smoothing levels: window size in terms of 0.05 cM bins
+    smoothing_levels = {
+        'None (0cM)': 1,
+        'Light (0.25cM)': 5,
+        'Medium (0.5cM)': 10,
+        'Heavy (1cM)': 20
+    }
+    
+    # Store trace metadata for smoothing
+    trace_data = []
+    
     print("\n" + "="*70)
     print("Generating Interactive Plotly Studio...")
     print("="*70)
@@ -85,22 +118,23 @@ def main():
             df = load_percentile_file(kinship, threshold)
             
             if df is None:
-                # Add placeholder trace to maintain index alignment
-                fig.add_trace(go.Scatter(
-                    x=[], y=[], 
-                    visible=False, 
-                    showlegend=False,
-                    hoverinfo='skip'
-                ))
-                trace_idx += 1
-                continue
+                 # Add placeholder trace to maintain index alignment
+                 fig.add_trace(go.Scatter(
+                     x=[], y=[], 
+                     visible=False, 
+                     showlegend=False,
+                     hoverinfo='skip'
+                 ))
+                 trace_data.append({'smoothed_y': {}})
+                 trace_idx += 1
+                 continue
 
             # Filter UN duplicates
             if kinship == 'UN':
                 df = filter_un_data(df)
 
             # Calculate Statistics
-            x_vals, y_pct, y_count, total = get_distribution_data(df)
+            x_vals, y_pct_raw, y_count, total = get_distribution_data(df)
 
             if x_vals is None:
                 # Add placeholder
@@ -110,16 +144,27 @@ def main():
                     showlegend=False,
                     hoverinfo='skip'
                 ))
+                trace_data.append({'smoothed_y': {}})
                 trace_idx += 1
                 continue
 
-            # Add Trace with full interactivity
+            # Pre-calculate smoothed data for all smoothing levels
+            smoothed_y = {}
+            for label, window in smoothing_levels.items():
+                smoothed_y[label] = apply_moving_average(y_pct_raw, window)
+
+            # Add Trace with full interactivity - Area Chart with Transparency
+            hex_color = colors[k_idx]
+            fill_color_rgba = hex_to_rgba(hex_color, FILL_OPACITY)
+            
             fig.add_trace(go.Scatter(
                 x=x_vals, 
-                y=y_pct,
+                y=smoothed_y['None (0cM)'],  # Start with unsmoothed data
                 mode='lines',
+                fill='tozeroy',
+                fillcolor=fill_color_rgba,
                 name=f'Kinship {kinship}',
-                line=dict(color=colors[k_idx], width=1.5),
+                line=dict(color=hex_color, width=LINE_WIDTH),
                 visible=is_visible,
                 customdata=np.column_stack((y_count, [total]*len(y_count))),
                 hovertemplate=(
@@ -131,7 +176,10 @@ def main():
                 )
             ))
             
-            print(f"    ✓ Kinship {kinship}: {total} pairs, max {max(y_pct):.2f}%")
+            # Store smoothed data for this trace
+            trace_data.append({'smoothed_y': smoothed_y})
+            
+            print(f"    ✓ Kinship {kinship}: {total} pairs, max {max(y_pct_raw):.2f}%")
             trace_idx += 1
 
     # --- Create Interactive Controls ---
@@ -172,6 +220,23 @@ def main():
             args=[{"yaxis.type": "log", "yaxis.title": "Percentage (%) [log scale]"}]
         )
     ]
+    
+    # 3. Smoothing Control Buttons
+    smoothing_buttons = []
+    for s_label, window in smoothing_levels.items():
+        new_y_values = []
+        for data_point in trace_data:
+            if not data_point['smoothed_y']:
+                new_y_values.append(None)
+            else:
+                new_y_values.append(data_point['smoothed_y'][s_label])
+        
+        button = dict(
+            label=s_label,
+            method="restyle",
+            args=[{"y": new_y_values}]
+        )
+        smoothing_buttons.append(button)
 
     # Layout with controls
     fig.update_layout(
@@ -198,35 +263,49 @@ def main():
             linecolor='#cccccc'
         ),
         updatemenus=[
-            # Threshold Selector
-            dict(
-                buttons=dropdown_buttons,
-                direction="down",
-                pad={"r": 10, "t": 10},
-                showactive=True,
-                x=0.0,
-                xanchor="left",
-                y=1.15,
-                yanchor="top",
-                bgcolor="#ffffff",
-                bordercolor="#cccccc",
-                borderwidth=1
-            ),
-            # Scale Toggle
-            dict(
-                buttons=scale_buttons,
-                direction="right",
-                pad={"r": 10, "t": 10},
-                showactive=True,
-                x=1.0,
-                xanchor="right",
-                y=1.15,
-                yanchor="top",
-                bgcolor="#ffffff",
-                bordercolor="#cccccc",
-                borderwidth=1
-            )
-        ],
+             # Threshold Selector
+             dict(
+                 buttons=dropdown_buttons,
+                 direction="down",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=0.0,
+                 xanchor="left",
+                 y=1.35,
+                 yanchor="top",
+                 bgcolor="#ffffff",
+                 bordercolor="#cccccc",
+                 borderwidth=1
+             ),
+             # Scale Toggle
+             dict(
+                 buttons=scale_buttons,
+                 direction="right",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=1.0,
+                 xanchor="right",
+                 y=1.35,
+                 yanchor="top",
+                 bgcolor="#ffffff",
+                 bordercolor="#cccccc",
+                 borderwidth=1
+             ),
+             # Smoothing Control
+             dict(
+                 buttons=smoothing_buttons,
+                 direction="right",
+                 pad={"r": 10, "t": 10},
+                 showactive=True,
+                 x=0.5,
+                 xanchor="center",
+                 y=1.35,
+                 yanchor="top",
+                 bgcolor="#ffffff",
+                 bordercolor="#cccccc",
+                 borderwidth=1
+             )
+         ],
         hovermode="x unified",
         template="plotly_white",
         legend=dict(
@@ -240,11 +319,11 @@ def main():
             borderwidth=1
         ),
         margin=dict(
-            l=80,
-            r=200,  # Extra space for legend
-            t=120,  # Space for controls
-            b=80
-        ),
+             l=80,
+             r=200,  # Extra space for legend
+             t=180,  # Space for controls
+             b=80
+         ),
         plot_bgcolor="rgba(240, 240, 240, 0.5)",
         paper_bgcolor="white",
         width=1400,
@@ -255,7 +334,7 @@ def main():
     fig.add_annotation(
         text="<b>Select Threshold:</b>",
         x=0.0,
-        y=1.22,
+        y=1.42,
         xref="paper",
         yref="paper",
         xanchor="left",
@@ -266,10 +345,21 @@ def main():
     fig.add_annotation(
         text="<b>Scale:</b>",
         x=1.0,
-        y=1.22,
+        y=1.42,
         xref="paper",
         yref="paper",
         xanchor="right",
+        showarrow=False,
+        font=dict(size=12)
+    )
+    
+    fig.add_annotation(
+        text="<b>Smoothing:</b>",
+        x=0.5,
+        y=1.42,
+        xref="paper",
+        yref="paper",
+        xanchor="center",
         showarrow=False,
         font=dict(size=12)
     )
