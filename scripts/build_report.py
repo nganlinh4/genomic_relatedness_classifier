@@ -91,11 +91,11 @@ def main():
             css_args = ['--css', css_path] if os.path.exists(css_path) else []
             
             # English (default output naming by md-to-pdf)
-            cmd_en = [npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}'] + css_args + [os.path.join(out_dir, 'results.md')]
+            cmd_en = [npx_cmd, 'md-to-pdf'] + css_args + [os.path.join(out_dir, 'results.md')]
             _subp.run(cmd_en, check=False)
             
             # Korean
-            cmd_kr = [npx_cmd, 'md-to-pdf', '--launch-options', '{"args": ["--no-sandbox"]}'] + css_args + [os.path.join(out_dir, 'results_KR.md')]
+            cmd_kr = [npx_cmd, 'md-to-pdf'] + css_args + [os.path.join(out_dir, 'results_KR.md')]
             _subp.run(cmd_kr, check=False)
             
             print("PDFs generated via md-to-pdf (EN and KR) with cross-platform fonts.")
