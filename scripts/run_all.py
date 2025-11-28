@@ -21,14 +21,14 @@ def cleanup_legacy_plots(dataset: str):
             except OSError: pass
 
 def run_for_dataset(ds: str, epochs: Optional[str], train_device: Optional[str], eval_device: Optional[str], 
-                   special_epochs: Optional[str], prune: bool, only_rf: bool, data_type: str):
+                   special_epochs: Optional[str], prune: bool, only_rf: bool, data_type: str, data_dir: str):
     
-    print(f"=== Pipeline Start: {ds} (Type: {data_type}) ===")
+    print(f"=== Pipeline Start: {ds} (Type: {data_type}, Data Dir: {data_dir}) ===")
 
     # Step 1: Data Prep
     print(f"Step 1: Data Preparation")
-    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type], check=True)
-    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type, "--drop-un"], check=True)
+    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type, "--data-dir", data_dir], check=True)
+    subprocess.run([python_exe, "scripts/data_prep.py", ds, "--type", data_type, "--drop-un", "--data-dir", data_dir], check=True)
 
     cleanup_legacy_plots(ds)
 
@@ -75,12 +75,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run full genomic classification pipeline')
     parser.add_argument('dataset', type=str, help="Dataset ID (e.g., cM_1) or 'all'")
     parser.add_argument('--type', type=str, choices=['standard', 'percentile'], default='standard', help="Data source type")
+    parser.add_argument('--data-dir', type=str, default='new', help="Data directory name (e.g., 'new', '251128')")
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--train-device', type=str, choices=['cpu','cuda'], default=None)
     parser.add_argument('--eval-device', type=str, choices=['cpu','cuda'], default=None)
     parser.add_argument('--special-epochs', type=int, default=None)
     parser.add_argument('--prune', action='store_true')
     parser.add_argument('--only-randomforest', action='store_true')
+    parser.add_argument('--prep-only', action='store_true', help="Only run data preparation, skip training")
     args = parser.parse_args()
 
     # Env var fallbacks
@@ -88,7 +90,21 @@ if __name__ == "__main__":
     train_dev = args.train_device or os.environ.get('TRAIN_DEVICE')
     eval_dev = args.eval_device or os.environ.get('EVAL_DEVICE')
 
+    # Data preparation step
+    print("=" * 80)
+    print(f"DATA PREPARATION: Converting {args.data_dir} TSV files to CSV")
+    print("=" * 80)
+    prep_cmd = [python_exe, "scripts/prepare_new_datasets.py", "--data-dir", args.data_dir]
+    if args.type == 'percentile':
+        subprocess.run(prep_cmd, check=True)
+    
+    if args.prep_only:
+        print("\n" + "=" * 80)
+        print("Data preparation complete. Skipping training (--prep-only flag set).")
+        print("=" * 80)
+        sys.exit(0)
+
     datasets = ["cM_1", "cM_3", "cM_6", "cM_10"] if args.dataset.lower() == 'all' else [args.dataset]
 
     for ds in datasets:
-        run_for_dataset(ds, epochs, train_dev, eval_dev, args.special_epochs, args.prune, args.only_randomforest, args.type)
+        run_for_dataset(ds, epochs, train_dev, eval_dev, args.special_epochs, args.prune, args.only_randomforest, args.type, args.data_dir)

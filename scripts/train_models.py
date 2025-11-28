@@ -157,8 +157,8 @@ y_val = torch.tensor(y_val, dtype=torch.long)
 # DataLoader
 train_dataset = TensorDataset(X_train, y_train)
 val_dataset = TensorDataset(X_val, y_val)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=False)
-val_loader = DataLoader(val_dataset, batch_size=32, pin_memory=False)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=False, drop_last=True)
+val_loader = DataLoader(val_dataset, batch_size=32, pin_memory=False, drop_last=True)
 
 # Advanced MLP Model
 class AdvancedMLP(nn.Module):

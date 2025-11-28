@@ -51,7 +51,7 @@ def parse_stats_file(path):
             df[c] = pd.to_numeric(df[c], errors='ignore')
     return df
 
-def process_percentile_mode(dataset, drop_un):
+def process_percentile_mode(dataset, drop_un, data_dir='new'):
     """Logic derived from data_prep_percentile.py"""
     raw_csv = os.path.join('data', 'raw', f'model_input_with_kinship_filtered_{dataset}_percentile.csv')
     if not os.path.exists(raw_csv):
@@ -119,16 +119,18 @@ def main():
     parser.add_argument('--drop-un', action='store_true', help="Drop rows where kinship == 'UN'")
     parser.add_argument('--type', type=str, choices=['standard', 'percentile'], default='standard', 
                         help="Data source type. 'standard' uses .out files, 'percentile' uses pre-calculated percentile CSVs.")
+    parser.add_argument('--data-dir', type=str, default='new',
+                        help="Data directory name (e.g., 'new', '251128')")
     args = parser.parse_args()
 
     dataset = args.dataset
     scenario_suffix = '_noUN' if args.drop_un else ''
     out_csv = os.path.join('data', 'processed', f'merged_{dataset}{scenario_suffix}.csv')
 
-    print(f"Processing {dataset} (Type: {args.type}, Drop UN: {args.drop_un})...")
+    print(f"Processing {dataset} (Type: {args.type}, Drop UN: {args.drop_un}, Data Dir: {args.data_dir})...")
 
     if args.type == 'percentile':
-        df_final = process_percentile_mode(dataset, args.drop_un)
+        df_final = process_percentile_mode(dataset, args.drop_un, args.data_dir)
     else:
         df_final = process_standard_mode(dataset)
 

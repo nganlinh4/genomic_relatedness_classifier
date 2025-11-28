@@ -26,13 +26,13 @@ def filter_duplicate_samples(df):
     return filtered_df
 
 
-def convert_merged_tsv_to_csv(threshold):
+def convert_merged_tsv_to_csv(threshold, data_dir='new'):
     """
     Convert merged_cm_over_X.tsv to model_input_with_kinship_filtered_cM_X_percentile.csv
     Uses percentile and statistical columns as features.
     """
     threshold = str(threshold)
-    input_tsv = f'data/raw/new/merged_cm_over_{threshold}.tsv'
+    input_tsv = f'data/raw/{data_dir}/merged_cm_over_{threshold}.tsv'
     output_csv = f'data/raw/model_input_with_kinship_filtered_cM_{threshold}_percentile.csv'
     
     if not os.path.exists(input_tsv):
@@ -78,14 +78,16 @@ def main():
     parser = argparse.ArgumentParser(description='Prepare new dataset TSVs for training')
     parser.add_argument('--thresholds', type=str, nargs='+', default=['1', '3', '6', '10'],
                        help='cM thresholds to process')
+    parser.add_argument('--data-dir', type=str, default='new',
+                       help='Data directory name (e.g., "new", "251128")')
     args = parser.parse_args()
     
     print("=" * 70)
-    print("Converting new TSV datasets to CSV format")
+    print(f"Converting TSV datasets to CSV format (source: data/raw/{args.data_dir})")
     print("=" * 70)
     
     for threshold in args.thresholds:
-        convert_merged_tsv_to_csv(threshold)
+        convert_merged_tsv_to_csv(threshold, args.data_dir)
     
     print("\n" + "=" * 70)
     print("All datasets converted successfully")
