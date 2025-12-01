@@ -44,7 +44,6 @@ def load_raw_kinship_file(kinship_level):
 def filter_un_data(df):
     """Filter UN kinship data to remove duplicate pairs."""
     duplicate_patterns = [f"[{i}-1_vs_{i}-2]" for i in range(1, 7)]
-    # Ensure PAIR_ID exists
     if 'PAIR_ID' not in df.columns:
         return df
     mask = ~df['PAIR_ID'].isin(duplicate_patterns)
@@ -52,11 +51,7 @@ def filter_un_data(df):
 
 
 def get_data_values(df):
-    """
-    Extracts the raw values from the dataframe for box plots and histograms.
-    Returns:
-        all_values: list of all data points
-    """
+    """Extracts the raw values from the dataframe for box plots and histograms."""
     percentile_cols = [col for col in df.columns if col.endswith('%')]
     percentile_cols = sorted(percentile_cols, key=lambda x: float(x.rstrip('%')))
     
@@ -68,20 +63,14 @@ def get_data_values(df):
 
 
 def get_cm_lengths(kinship_level, threshold):
-    """
-    Extract actual cM lengths from raw kinship file, filtered by threshold.
-    Includes FIX for UN duplicate data.
-    """
+    """Extract actual cM lengths from raw kinship file, filtered by threshold."""
     df_raw = load_raw_kinship_file(kinship_level)
     if df_raw is None or len(df_raw) == 0:
         return np.array([])
 
-    # --- FIX: Apply Duplicate Filter to Raw Data for UN Group ---
     if str(kinship_level) == 'UN':
         df_raw = filter_un_data(df_raw)
-    # ------------------------------------------------------------
     
-    # Identify the column with cM lengths
     cM_col = None
     col_lower_map = {col.lower(): col for col in df_raw.columns}
     
@@ -137,7 +126,7 @@ def main(data_dir='new'):
     trace_data = []
     
     print("\n" + "="*70)
-    print("Generating Optimized Interactive Studio (Low Lag Mode)...")
+    print("Generating Optimized Interactive Studio with Violin Plots...")
     print("="*70)
 
     fig = make_subplots(
@@ -146,13 +135,13 @@ def main(data_dir='new'):
         vertical_spacing=0.08,
         row_heights=[0.35, 0.35, 0.30],
         subplot_titles=(
-            "1. Data Manipulation: Moving Average (Standard Lines)", 
-            "2. Visual Smoothing: Spline Interpolation (Curved Lines)",
-            "3. Statistical Summary: Box Plot Distribution"
+            "1. Data Manipulation: Moving Average", 
+            "2. Visual Smoothing: Spline Interpolation",
+            "3. Statistical Summary: Distribution (Box/Violin)"
         )
     )
     
-    traces_per_group = 3
+    traces_per_group = 3 # 1 Line, 1 Spline, 1 Box/Violin
     traces_per_threshold = len(kinship_levels) * traces_per_group
 
     for t_idx, threshold in enumerate(thresholds):
@@ -160,19 +149,17 @@ def main(data_dir='new'):
         is_visible = (t_idx == 0)
 
         for k_idx, kinship in enumerate(kinship_levels):
-            # Load and process Histogram Data (for Lines)
+            # Load Data
             df = load_percentile_file(kinship, threshold, data_dir)
             
             x_vals, y_pct_raw, y_count, total = [], [], [], 0
             if df is not None:
                 if kinship == 'UN':
                     df = filter_un_data(df)
-                
                 histogram_data_points = get_data_values(df)
                 if len(histogram_data_points) > 0:
                     x_vals, y_pct_raw, y_count, total = get_distribution_data(histogram_data_points)
 
-            # Load Raw Data (for Box Plot)
             box_plot_cm_lengths = get_cm_lengths(kinship, threshold)
 
             # Smoothing logic
@@ -199,7 +186,7 @@ def main(data_dir='new'):
             
             legend_group_id = f"group_{threshold}_{kinship}"
 
-            # Trace 1: Linear Line
+            # Trace 1: Linear
             fig.add_trace(go.Scatter(
                 x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
                 name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=True,
@@ -210,7 +197,7 @@ def main(data_dir='new'):
             ), row=1, col=1)
             trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
 
-            # Trace 2: Spline Line
+            # Trace 2: Spline
             fig.add_trace(go.Scatter(
                 x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
                 name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=False,
@@ -221,16 +208,15 @@ def main(data_dir='new'):
             ), row=2, col=1)
             trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
 
-            # Trace 3: Box Plot (PERFORMANCE OPTIMIZED)
+            # Trace 3: Box Plot (Initial state)
+            # We initialize as a Box plot. The interface allows switching to Violin.
             fig.add_trace(go.Box(
                 y=box_plot_cm_lengths if len(box_plot_cm_lengths) > 0 else [None],
                 name=f'Kinship {kinship}',
                 legendgroup=legend_group_id,
                 showlegend=False,
                 marker_color=hex_color,
-                # --- OPTIMIZATION HERE ---
-                boxpoints=False, # Default to False (No points drawn)
-                # -------------------------
+                boxpoints=False, # Default to hidden for performance
                 jitter=0.3,
                 pointpos=-1.8,
                 visible=is_visible,
@@ -238,12 +224,14 @@ def main(data_dir='new'):
             ), row=3, col=1)
             trace_data.append({'smoothed_y': None, 'type': 'box'})
 
-            if len(y_count) > 0:
-                print(f"    ✓ Kinship {kinship}: {total} pairs")
-
     # --- Interactive Controls ---
     print("\nConfiguring interactive controls...")
     
+    # Calculate indices for the 3rd trace in every group (the distribution trace) to apply Type updates
+    # Structure: [Line, Spline, Box, Line, Spline, Box, ...]
+    total_traces = len(fig.data)
+    dist_indices = [i for i in range(2, total_traces, 3)]
+
     # 1. Threshold Selector
     dropdown_buttons = []
     for i, threshold in enumerate(thresholds):
@@ -261,8 +249,10 @@ def main(data_dir='new'):
 
     # 2. Scale Toggle
     scale_buttons = [
-        dict(label="Linear Scale", method="relayout", args=[{"yaxis.type": "linear", "yaxis2.type": "linear"}]),
-        dict(label="Log Scale", method="relayout", args=[{"yaxis.type": "log", "yaxis2.type": "log"}])
+        dict(label="Linear Scale", method="relayout", 
+             args=[{"yaxis.type": "linear", "yaxis2.type": "linear", "yaxis3.type": "linear"}]),
+        dict(label="Log Scale", method="relayout", 
+             args=[{"yaxis.type": "log", "yaxis2.type": "log", "yaxis3.type": "log"}])
     ]
     
     # 3. Smoothing Control
@@ -285,19 +275,49 @@ def main(data_dir='new'):
         dict(label="Sync Off", method="relayout", args=[{"xaxis2.matches": None, "yaxis2.matches": None, "xaxis2.autorange": True, "yaxis2.autorange": True}])
     ]
 
-    # 5. NEW: Outlier Toggle (Performance Control)
-    # This button toggles the 'boxpoints' attribute of the Box traces
-    outlier_buttons = [
+    # 5. Plot Type (Box vs Violin) - NEW
+    # This toggles the 'type' of the 3rd trace in every group
+    type_buttons = [
         dict(
-            label="Outliers: OFF (Fast)", 
+            label="Box Plot", 
             method="restyle", 
-            args=[{"boxpoints": False}] # Hides points
+            args=[{
+                "type": "box", 
+                "boxpoints": False, # Reset to default state
+                "box.visible": None, 
+                "meanline.visible": None
+            }, dist_indices]
         ),
         dict(
-            label="Outliers: ON (Slow)", 
+            label="Violin Plot", 
             method="restyle", 
-            args=[{"boxpoints": "outliers"}] # Shows outlier points
+            args=[{
+                "type": "violin", 
+                "points": False,      # Hide scatter points on violin by default
+                "box.visible": True,  # Show mini box inside violin
+                "meanline.visible": True
+            }, dist_indices]
         )
+    ]
+
+    # 6. Outlier Toggle (Updated for both Box and Violin)
+    # Box uses 'boxpoints', Violin uses 'points'
+    outlier_buttons = [
+        dict(label="Outliers: OFF", method="restyle", 
+             args=[{"boxpoints": False, "points": False}]),
+        dict(label="Outliers: ON", method="restyle", 
+             args=[{"boxpoints": "outliers", "points": "outliers"}])
+    ]
+
+    # 7. Distribution Y-Axis Zoom
+    box_zoom_buttons = [
+        dict(label="Dist: Auto", method="relayout", args=[{"yaxis3.range": None, "yaxis3.autorange": True}]),
+        dict(label="Dist: 0-5 cM", method="relayout", args=[{"yaxis3.range": [0, 5], "yaxis3.autorange": False}]),
+        dict(label="Dist: 0-10 cM", method="relayout", args=[{"yaxis3.range": [0, 10], "yaxis3.autorange": False}]),
+        dict(label="Dist: 0-25 cM", method="relayout", args=[{"yaxis3.range": [0, 25], "yaxis3.autorange": False}]),
+        dict(label="Dist: 0-50 cM", method="relayout", args=[{"yaxis3.range": [0, 50], "yaxis3.autorange": False}]),
+        dict(label="Dist: 0-100 cM", method="relayout", args=[{"yaxis3.range": [0, 100], "yaxis3.autorange": False}]),
+        dict(label="Dist: 0-250 cM", method="relayout", args=[{"yaxis3.range": [0, 250], "yaxis3.autorange": False}]),
     ]
 
     fig.update_layout(
@@ -315,12 +335,18 @@ def main(data_dir='new'):
         yaxis3=dict(title_text="Length (cM)"),
         
         updatemenus=[
-             dict(buttons=dropdown_buttons, direction="down", showactive=True, x=0.0, xanchor="left", y=1.10, bgcolor="#ffffff"),
-             dict(buttons=scale_buttons, direction="right", showactive=True, x=1.0, xanchor="right", y=1.10, bgcolor="#ffffff"),
-             dict(buttons=smoothing_buttons, direction="right", showactive=True, x=0.35, xanchor="center", y=1.10, bgcolor="#ffffff"),
-             dict(buttons=zoom_buttons, direction="right", showactive=True, x=0.55, xanchor="center", y=1.10, bgcolor="#ffffff"),
-             # New Button: Outlier Toggle
-             dict(buttons=outlier_buttons, direction="right", showactive=True, x=0.75, xanchor="center", y=1.10, bgcolor="#ffffff")
+             # Row 1 Buttons
+             dict(buttons=dropdown_buttons, direction="down", showactive=True, x=0.0, xanchor="left", y=1.12, bgcolor="#ffffff"),
+             dict(buttons=scale_buttons, direction="right", showactive=True, x=0.16, xanchor="left", y=1.12, bgcolor="#ffffff"),
+             dict(buttons=smoothing_buttons, direction="right", showactive=True, x=0.33, xanchor="left", y=1.12, bgcolor="#ffffff"),
+             
+             # Row 2 Buttons
+             dict(buttons=zoom_buttons, direction="right", showactive=True, x=0.50, xanchor="left", y=1.12, bgcolor="#ffffff"),
+             dict(buttons=type_buttons, direction="right", showactive=True, x=0.62, xanchor="left", y=1.12, bgcolor="#ffffff"), # NEW Position
+             dict(buttons=outlier_buttons, direction="right", showactive=True, x=0.76, xanchor="left", y=1.12, bgcolor="#ffffff"),
+             
+             # Zoom Button
+             dict(buttons=box_zoom_buttons, direction="down", showactive=True, x=0.91, xanchor="left", y=1.12, bgcolor="#ffffff")
          ]
     )
 
@@ -330,18 +356,22 @@ def main(data_dir='new'):
         fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=r, col=1)
     fig.update_xaxes(title_text="Kinship Group", showgrid=True, row=3, col=1)
 
-    fig.add_annotation(text="<b>Select Threshold:</b>", x=0.0, y=1.14, xref="paper", yref="paper", xanchor="left", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Scale:</b>", x=1.0, y=1.14, xref="paper", yref="paper", xanchor="right", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Smoothing:</b>", x=0.35, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Zoom Sync:</b>", x=0.55, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Outlier Data:</b>", x=0.75, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
+    # Header Annotations for Buttons
+    button_y_pos = 1.15
+    fig.add_annotation(text="<b>Threshold</b>", x=0.0, y=button_y_pos, xref="paper", yref="paper", showarrow=False)
+    fig.add_annotation(text="<b>Scale</b>", x=0.16, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
+    fig.add_annotation(text="<b>Smoothing</b>", x=0.33, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
+    fig.add_annotation(text="<b>Sync</b>", x=0.50, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
+    fig.add_annotation(text="<b>Plot Type</b>", x=0.62, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
+    fig.add_annotation(text="<b>Outliers</b>", x=0.76, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
+    fig.add_annotation(text="<b>Dist Zoom</b>", x=0.91, y=button_y_pos, xref="paper", yref="paper", xanchor="left", showarrow=False)
 
     output_file = 'kinship_interactive_studio.html'
     print(f"\nSaving optimized studio to {output_file}...")
     fig.write_html(output_file, include_plotlyjs='cdn', full_html=True, config=dict(responsive=True, displayModeBar=True, displaylogo=False))
     
     print("\n" + "="*70)
-    print("✓ SUCCESS: Lag Reduced & Outlier Toggle Added!")
+    print("✓ SUCCESS: Added Violin/Box Plot switching capability!")
     print("="*70 + "\n")
 
 
