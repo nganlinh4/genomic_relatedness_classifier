@@ -93,3 +93,4 @@ kinship_*.zip
 
 # Training logs
 training_*.log
+data/processed/kinship_UN_filtered_length50/
