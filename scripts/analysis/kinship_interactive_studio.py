@@ -261,10 +261,19 @@ def main(data_dir='new'):
     # --- Interactive Controls ---
     print("\nConfiguring interactive controls...")
     
-    # Calculate indices for the 3rd trace in every group (the distribution trace) to apply Type updates
-    # Structure: [Line, Spline, Box, Line, Spline, Box, ...]
+    # Calculate indices for all box/violin traces (3rd in each group + filtered UN boxes)
+    # Structure for each threshold: [Line, Spline, Box] × kinships + [Filtered UN Box]
     total_traces = len(fig.data)
-    dist_indices = [i for i in range(2, total_traces, 3)]
+    dist_indices = []
+    trace_idx = 0
+    for t_idx in range(len(thresholds)):
+        for k_idx in range(len(kinship_levels)):
+            # Box trace is always at position 2 within each kinship group
+            dist_indices.append(trace_idx + 2)
+            trace_idx += traces_per_group
+        # Add filtered UN box trace (last trace of each threshold)
+        dist_indices.append(trace_idx)
+        trace_idx += 1
 
     # 1. Threshold Selector
     dropdown_buttons = []
