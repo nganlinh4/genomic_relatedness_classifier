@@ -21,8 +21,13 @@ print(f"Original rows: {len(df)}")
 print(f"Filtered rows: {len(df_filtered)}")
 print(f"Removed rows: {len(rows_to_remove)}")
 
-# Save list of removed pairs
-output_removed_pairs = '/home/moagen/linh/genomic_relatedness_classifier/data/raw/kinship_UN_removed_pairs_length50.txt'
+# Save full removed data rows
+output_removed_data = '/home/moagen/linh/genomic_relatedness_classifier/data/processed/kinship_UN_filtered_length50/kinship_UN_removed_full_data_length50.tsv'
+rows_to_remove.to_csv(output_removed_data, sep='\t', index=False)
+print(f"\nFull removed data rows saved to: {output_removed_data}")
+
+# Save list of removed pairs (summary)
+output_removed_pairs = '/home/moagen/linh/genomic_relatedness_classifier/data/processed/kinship_UN_filtered_length50/kinship_UN_removed_pairs_length50.txt'
 with open(output_removed_pairs, 'w') as f:
     f.write("Pairs with LENGTH_CM >= 50 (REMOVED)\n")
     f.write("=" * 50 + "\n\n")
@@ -31,7 +36,7 @@ with open(output_removed_pairs, 'w') as f:
         max_length = pair_data['LENGTH_CM'].max()
         f.write(f"{pair} (Max LENGTH_CM: {max_length:.6f})\n")
 
-print(f"\nRemoved pairs list saved to: {output_removed_pairs}")
+print(f"Removed pairs summary saved to: {output_removed_pairs}")
 print(f"\nUnique pairs removed: {len(removed_pairs)}")
 print(f"\nRemoved pairs:")
 for pair in sorted(removed_pairs):

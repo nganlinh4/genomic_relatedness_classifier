@@ -32,10 +32,16 @@ def load_percentile_file(kinship_level, threshold, data_dir='new'):
     return pd.read_csv(file_path, sep='\t')
 
 
-def load_raw_kinship_file(kinship_level):
+def load_raw_kinship_file(kinship_level, use_filtered=False):
     """Load raw kinship TSV file with actual cM lengths."""
     kinship_str = str(kinship_level)
-    file_path = f'data/raw/kinship_{kinship_str}.tsv'
+    
+    # For UN kinship, support filtered version
+    if kinship_str == 'UN' and use_filtered:
+        file_path = 'data/processed/kinship_UN_filtered_length50/kinship_UN_filtered_length50.tsv'
+    else:
+        file_path = f'data/raw/kinship_{kinship_str}.tsv'
+    
     if not os.path.exists(file_path):
         return None
     return pd.read_csv(file_path, sep='\t')
@@ -62,9 +68,9 @@ def get_data_values(df):
     return np.array(all_values)
 
 
-def get_cm_lengths(kinship_level, threshold):
+def get_cm_lengths(kinship_level, threshold, use_filtered=False):
     """Extract actual cM lengths from raw kinship file, filtered by threshold."""
-    df_raw = load_raw_kinship_file(kinship_level)
+    df_raw = load_raw_kinship_file(kinship_level, use_filtered)
     if df_raw is None or len(df_raw) == 0:
         return np.array([])
 
@@ -142,87 +148,115 @@ def main(data_dir='new'):
     )
     
     traces_per_group = 3 # 1 Line, 1 Spline, 1 Box/Violin
-    traces_per_threshold = len(kinship_levels) * traces_per_group
+    # UN has 1 additional box trace for filtered (rows 1-2 always show original)
+    traces_per_threshold = len(kinship_levels) * traces_per_group + 1  # +1 for UN filtered box
 
     for t_idx, threshold in enumerate(thresholds):
         print(f"\n  Threshold > {threshold} cM:")
         is_visible = (t_idx == 0)
 
         for k_idx, kinship in enumerate(kinship_levels):
-            # Load Data
-            df = load_percentile_file(kinship, threshold, data_dir)
+            # For UN: rows 1-2 use Original only, row 3 uses both Original and Filtered
+            # For others: all rows use Original only
+            # We'll handle UN specially in the traces section
+            filter_versions_for_kinship = [False]  # Always start with Original
             
-            x_vals, y_pct_raw, y_count, total = [], [], [], 0
-            if df is not None:
-                if kinship == 'UN':
-                    df = filter_un_data(df)
-                histogram_data_points = get_data_values(df)
-                if len(histogram_data_points) > 0:
-                    x_vals, y_pct_raw, y_count, total = get_distribution_data(histogram_data_points)
+            for f_idx, use_filtered in enumerate(filter_versions_for_kinship):
+                # Load Data
+                df = load_percentile_file(kinship, threshold, data_dir)
+                
+                x_vals, y_pct_raw, y_count, total = [], [], [], 0
+                if df is not None:
+                    if kinship == 'UN':
+                        df = filter_un_data(df)
+                    histogram_data_points = get_data_values(df)
+                    if len(histogram_data_points) > 0:
+                        x_vals, y_pct_raw, y_count, total = get_distribution_data(histogram_data_points)
 
-            box_plot_cm_lengths = get_cm_lengths(kinship, threshold)
+                box_plot_cm_lengths = get_cm_lengths(kinship, threshold, use_filtered)
 
-            # Smoothing logic
-            smoothed_y = {}
-            if len(y_pct_raw) > 0:
-                for label, window in smoothing_levels.items():
-                    smoothed_y[label] = apply_moving_average(y_pct_raw, window)
-                current_y = smoothed_y['None (0cM)']
-            else:
-                for label in smoothing_levels:
-                    smoothed_y[label] = []
-                current_y = []
+                # Smoothing logic
+                smoothed_y = {}
+                if len(y_pct_raw) > 0:
+                    for label, window in smoothing_levels.items():
+                        smoothed_y[label] = apply_moving_average(y_pct_raw, window)
+                    current_y = smoothed_y['None (0cM)']
+                else:
+                    for label in smoothing_levels:
+                        smoothed_y[label] = []
+                    current_y = []
 
-            hex_color = colors[k_idx]
-            fill_color_rgba = hex_to_rgba(hex_color, FILL_OPACITY)
+                hex_color = colors[k_idx]
+                fill_color_rgba = hex_to_rgba(hex_color, FILL_OPACITY)
+                
+                filter_label = 'Filtered' if use_filtered else 'Original'
+                display_label = f'{filter_label}' if kinship == 'UN' else ''
+                name_suffix = f' ({display_label})' if display_label else ''
+                
+                hover_txt = (
+                    "<b>Kinship %s%s (cM > %d)</b><br>" % (kinship, name_suffix, threshold) +
+                    "Length: %{x:.2f} cM<br>" +
+                    "Percentage: %{y:.2f}%<br>" +
+                    "Count: %{customdata[0]:,.0f} pairs<br>" +
+                    "<extra></extra>"
+                )
+                
+                legend_group_id = f"group_{threshold}_{kinship}_{f_idx}"
+
+                # Trace 1: Linear
+                fig.add_trace(go.Scatter(
+                    x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
+                    name=f'Kinship {kinship}{name_suffix}', legendgroup=legend_group_id, showlegend=True,
+                    line=dict(color=hex_color, width=LINE_WIDTH, shape='linear'),
+                    visible=is_visible,
+                    customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
+                    hovertemplate=hover_txt
+                ), row=1, col=1)
+                trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
+
+                # Trace 2: Spline
+                fig.add_trace(go.Scatter(
+                    x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
+                    name=f'Kinship {kinship}{name_suffix}', legendgroup=legend_group_id, showlegend=False,
+                    line=dict(color=hex_color, width=LINE_WIDTH, shape='spline', smoothing=1.3),
+                    visible=is_visible,
+                    customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
+                    hovertemplate=hover_txt
+                ), row=2, col=1)
+                trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
+
+                # Trace 3: Box Plot (Initial state)
+                # We initialize as a Box plot. The interface allows switching to Violin.
+                fig.add_trace(go.Box(
+                    y=box_plot_cm_lengths if len(box_plot_cm_lengths) > 0 else [None],
+                    name=f'Kinship {kinship}{name_suffix}',
+                    legendgroup=legend_group_id,
+                    showlegend=False,
+                    marker_color=hex_color,
+                    boxpoints=False, # Default to hidden for performance
+                    jitter=0.3,
+                    pointpos=-1.8,
+                    visible=is_visible,
+                    hovertemplate="<b>Kinship %s%s (cM > %d)</b><br>Length: %%{y:.2f} cM<extra></extra>" % (kinship, name_suffix, threshold)
+                ), row=3, col=1)
+                trace_data.append({'smoothed_y': None, 'type': 'box'})
             
-            hover_txt = (
-                "<b>Kinship %s (cM > %d)</b><br>" % (kinship, threshold) +
-                "Length: %{x:.2f} cM<br>" +
-                "Percentage: %{y:.2f}%<br>" +
-                "Count: %{customdata[0]:,.0f} pairs<br>" +
-                "<extra></extra>"
-            )
-            
-            legend_group_id = f"group_{threshold}_{kinship}"
-
-            # Trace 1: Linear
-            fig.add_trace(go.Scatter(
-                x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
-                name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=True,
-                line=dict(color=hex_color, width=LINE_WIDTH, shape='linear'),
-                visible=is_visible,
-                customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
-                hovertemplate=hover_txt
-            ), row=1, col=1)
-            trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
-
-            # Trace 2: Spline
-            fig.add_trace(go.Scatter(
-                x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
-                name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=False,
-                line=dict(color=hex_color, width=LINE_WIDTH, shape='spline', smoothing=1.3),
-                visible=is_visible,
-                customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
-                hovertemplate=hover_txt
-            ), row=2, col=1)
-            trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
-
-            # Trace 3: Box Plot (Initial state)
-            # We initialize as a Box plot. The interface allows switching to Violin.
-            fig.add_trace(go.Box(
-                y=box_plot_cm_lengths if len(box_plot_cm_lengths) > 0 else [None],
-                name=f'Kinship {kinship}',
-                legendgroup=legend_group_id,
-                showlegend=False,
-                marker_color=hex_color,
-                boxpoints=False, # Default to hidden for performance
-                jitter=0.3,
-                pointpos=-1.8,
-                visible=is_visible,
-                hovertemplate="<b>Kinship %s (cM > %d)</b><br>Length: %%{y:.2f} cM<extra></extra>" % (kinship, threshold)
-            ), row=3, col=1)
-            trace_data.append({'smoothed_y': None, 'type': 'box'})
+            # For UN, add FILTERED version ONLY for box plot (row 3)
+            if kinship == 'UN':
+                box_plot_cm_lengths_filtered = get_cm_lengths(kinship, threshold, use_filtered=True)
+                fig.add_trace(go.Box(
+                    y=box_plot_cm_lengths_filtered if len(box_plot_cm_lengths_filtered) > 0 else [None],
+                    name=f'Kinship UN (Filtered)',
+                    legendgroup=f"group_{threshold}_{kinship}_filtered",
+                    showlegend=True,
+                    marker_color=colors[k_idx],
+                    boxpoints=False,
+                    jitter=0.3,
+                    pointpos=-1.8,
+                    visible=is_visible,
+                    hovertemplate="<b>Kinship UN (Filtered, < 50 cM) (cM > %d)</b><br>Length: %%{y:.2f} cM<extra></extra>" % threshold
+                ), row=3, col=1)
+                trace_data.append({'smoothed_y': None, 'type': 'box'})
 
     # --- Interactive Controls ---
     print("\nConfiguring interactive controls...")
@@ -246,7 +280,7 @@ def main(data_dir='new'):
             method="update",
             args=[{"visible": visibility}]
         ))
-
+    
     # 2. Scale Toggle
     scale_buttons = [
         dict(label="Linear Scale", method="relayout", 
@@ -342,7 +376,7 @@ def main(data_dir='new'):
              
              # Row 2 Buttons
              dict(buttons=zoom_buttons, direction="right", showactive=True, x=0.50, xanchor="left", y=1.12, bgcolor="#ffffff"),
-             dict(buttons=type_buttons, direction="right", showactive=True, x=0.62, xanchor="left", y=1.12, bgcolor="#ffffff"), # NEW Position
+             dict(buttons=type_buttons, direction="right", showactive=True, x=0.62, xanchor="left", y=1.12, bgcolor="#ffffff"),
              dict(buttons=outlier_buttons, direction="right", showactive=True, x=0.76, xanchor="left", y=1.12, bgcolor="#ffffff"),
              
              # Zoom Button
