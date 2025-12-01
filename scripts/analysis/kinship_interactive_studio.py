@@ -32,17 +32,30 @@ def load_percentile_file(kinship_level, threshold, data_dir='new'):
     return pd.read_csv(file_path, sep='\t')
 
 
+def load_raw_kinship_file(kinship_level):
+    """Load raw kinship TSV file with actual cM lengths."""
+    kinship_str = str(kinship_level)
+    file_path = f'data/raw/kinship_{kinship_str}.tsv'
+    if not os.path.exists(file_path):
+        return None
+    return pd.read_csv(file_path, sep='\t')
+
+
 def filter_un_data(df):
     """Filter UN kinship data to remove duplicate pairs."""
     duplicate_patterns = [f"[{i}-1_vs_{i}-2]" for i in range(1, 7)]
+    # Ensure PAIR_ID exists
+    if 'PAIR_ID' not in df.columns:
+        return df
     mask = ~df['PAIR_ID'].isin(duplicate_patterns)
     return df[mask].copy()
 
 
-def get_distribution_data(df):
+def get_data_values(df):
     """
-    Process dataframe into histogram bins for plotting.
-    Returns lists of x (lengths), y_pct (percentage), y_count (raw counts).
+    Extracts the raw values from the dataframe for box plots and histograms.
+    Returns:
+        all_values: list of all data points
     """
     percentile_cols = [col for col in df.columns if col.endswith('%')]
     percentile_cols = sorted(percentile_cols, key=lambda x: float(x.rstrip('%')))
@@ -50,12 +63,52 @@ def get_distribution_data(df):
     all_values = []
     for col in percentile_cols:
         all_values.extend(df[col].dropna().values)
+        
+    return np.array(all_values)
+
+
+def get_cm_lengths(kinship_level, threshold):
+    """
+    Extract actual cM lengths from raw kinship file, filtered by threshold.
+    Includes FIX for UN duplicate data.
+    """
+    df_raw = load_raw_kinship_file(kinship_level)
+    if df_raw is None or len(df_raw) == 0:
+        return np.array([])
+
+    # --- FIX: Apply Duplicate Filter to Raw Data for UN Group ---
+    if str(kinship_level) == 'UN':
+        df_raw = filter_un_data(df_raw)
+    # ------------------------------------------------------------
     
-    if not all_values:
+    # Identify the column with cM lengths
+    cM_col = None
+    col_lower_map = {col.lower(): col for col in df_raw.columns}
+    
+    for key in ['length_cm', 'cm', 'centimorgan', 'centimorgans', 'length']:
+        if key in col_lower_map:
+            cM_col = col_lower_map[key]
+            break
+    
+    if cM_col is None:
+        numeric_cols = df_raw.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols:
+            cM_col = numeric_cols[0]
+    
+    if cM_col is None:
+        return np.array([])
+    
+    lengths = df_raw[df_raw[cM_col] > threshold][cM_col].values
+    return np.array(lengths)
+
+
+def get_distribution_data(all_values):
+    """Process raw values into histogram bins for plotting."""
+    if len(all_values) == 0:
         return None, None, None, 0
 
     bin_size = 0.05
-    max_val = max(all_values)
+    max_val = np.max(all_values)
     bin_edges = np.arange(0, max_val + bin_size, bin_size)
     bin_centers = bin_edges[:-1] + bin_size / 2
     
@@ -84,38 +137,45 @@ def main(data_dir='new'):
     trace_data = []
     
     print("\n" + "="*70)
-    print("Generating Interactive Plotly Studio (Double Plot Mode)...")
+    print("Generating Optimized Interactive Studio (Low Lag Mode)...")
     print("="*70)
 
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=3, cols=1,
         shared_xaxes=False,
-        vertical_spacing=0.12,
+        vertical_spacing=0.08,
+        row_heights=[0.35, 0.35, 0.30],
         subplot_titles=(
             "1. Data Manipulation: Moving Average (Standard Lines)", 
-            "2. Visual Smoothing: Spline Interpolation (Curved Lines)"
+            "2. Visual Smoothing: Spline Interpolation (Curved Lines)",
+            "3. Statistical Summary: Box Plot Distribution"
         )
     )
     
-    total_logical_groups = len(thresholds) * len(kinship_levels)
-    print(f"Processing {total_logical_groups} logical groups ({total_logical_groups * 2} traces)...")
+    traces_per_group = 3
+    traces_per_threshold = len(kinship_levels) * traces_per_group
 
     for t_idx, threshold in enumerate(thresholds):
         print(f"\n  Threshold > {threshold} cM:")
         is_visible = (t_idx == 0)
 
         for k_idx, kinship in enumerate(kinship_levels):
+            # Load and process Histogram Data (for Lines)
             df = load_percentile_file(kinship, threshold, data_dir)
             
-            if df is None:
-                 x_vals, y_pct_raw, y_count, total = [], [], [], 0
-            else:
+            x_vals, y_pct_raw, y_count, total = [], [], [], 0
+            if df is not None:
                 if kinship == 'UN':
                     df = filter_un_data(df)
-                x_vals, y_pct_raw, y_count, total = get_distribution_data(df)
-                if x_vals is None:
-                    x_vals, y_pct_raw, y_count, total = [], [], [], 0
+                
+                histogram_data_points = get_data_values(df)
+                if len(histogram_data_points) > 0:
+                    x_vals, y_pct_raw, y_count, total = get_distribution_data(histogram_data_points)
 
+            # Load Raw Data (for Box Plot)
+            box_plot_cm_lengths = get_cm_lengths(kinship, threshold)
+
+            # Smoothing logic
             smoothed_y = {}
             if len(y_pct_raw) > 0:
                 for label, window in smoothing_levels.items():
@@ -133,47 +193,50 @@ def main(data_dir='new'):
                 "<b>Kinship %s (cM > %d)</b><br>" % (kinship, threshold) +
                 "Length: %{x:.2f} cM<br>" +
                 "Percentage: %{y:.2f}%<br>" +
-                "Count: %{customdata[0]:,.0f} pairs (of %{customdata[1]:.0f} total)<br>" +
+                "Count: %{customdata[0]:,.0f} pairs<br>" +
                 "<extra></extra>"
             )
             
             legend_group_id = f"group_{threshold}_{kinship}"
 
-            # --- Trace 1: Top Plot ---
+            # Trace 1: Linear Line
             fig.add_trace(go.Scatter(
-                x=x_vals, 
-                y=current_y,
-                mode='lines',
-                fill='tozeroy',
-                fillcolor=fill_color_rgba,
-                name=f'Kinship {kinship}',
-                legendgroup=legend_group_id,
-                showlegend=True,
+                x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
+                name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=True,
                 line=dict(color=hex_color, width=LINE_WIDTH, shape='linear'),
                 visible=is_visible,
                 customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
                 hovertemplate=hover_txt
             ), row=1, col=1)
-            
-            trace_data.append({'smoothed_y': smoothed_y})
+            trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
 
-            # --- Trace 2: Bottom Plot ---
+            # Trace 2: Spline Line
             fig.add_trace(go.Scatter(
-                x=x_vals, 
-                y=current_y,
-                mode='lines',
-                fill='tozeroy',
-                fillcolor=fill_color_rgba,
-                name=f'Kinship {kinship}',
-                legendgroup=legend_group_id,
-                showlegend=False,
+                x=x_vals, y=current_y, mode='lines', fill='tozeroy', fillcolor=fill_color_rgba,
+                name=f'Kinship {kinship}', legendgroup=legend_group_id, showlegend=False,
                 line=dict(color=hex_color, width=LINE_WIDTH, shape='spline', smoothing=1.3),
                 visible=is_visible,
                 customdata=np.column_stack((y_count, [total]*len(y_count))) if len(y_count) > 0 else None,
                 hovertemplate=hover_txt
             ), row=2, col=1)
-            
-            trace_data.append({'smoothed_y': smoothed_y})
+            trace_data.append({'smoothed_y': smoothed_y, 'type': 'line'})
+
+            # Trace 3: Box Plot (PERFORMANCE OPTIMIZED)
+            fig.add_trace(go.Box(
+                y=box_plot_cm_lengths if len(box_plot_cm_lengths) > 0 else [None],
+                name=f'Kinship {kinship}',
+                legendgroup=legend_group_id,
+                showlegend=False,
+                marker_color=hex_color,
+                # --- OPTIMIZATION HERE ---
+                boxpoints=False, # Default to False (No points drawn)
+                # -------------------------
+                jitter=0.3,
+                pointpos=-1.8,
+                visible=is_visible,
+                hovertemplate="<b>Kinship %s (cM > %d)</b><br>Length: %%{y:.2f} cM<extra></extra>" % (kinship, threshold)
+            ), row=3, col=1)
+            trace_data.append({'smoothed_y': None, 'type': 'box'})
 
             if len(y_count) > 0:
                 print(f"    ✓ Kinship {kinship}: {total} pairs")
@@ -181,26 +244,20 @@ def main(data_dir='new'):
     # --- Interactive Controls ---
     print("\nConfiguring interactive controls...")
     
-    # 1. Threshold Dropdown
-    traces_per_threshold = len(kinship_levels) * 2 
+    # 1. Threshold Selector
     dropdown_buttons = []
     for i, threshold in enumerate(thresholds):
-        total_traces = len(trace_data)
-        visibility = [False] * total_traces
+        visibility = [False] * len(trace_data)
         start_idx = i * traces_per_threshold
         end_idx = start_idx + traces_per_threshold
         for j in range(start_idx, end_idx):
             visibility[j] = True
         
-        button = dict(
+        dropdown_buttons.append(dict(
             label=f"Threshold > {threshold} cM",
             method="update",
-            args=[
-                {"visible": visibility},
-                {"title": f"Kinship Distribution Analysis (Threshold > {threshold} cM)"}
-            ]
-        )
-        dropdown_buttons.append(button)
+            args=[{"visible": visibility}]
+        ))
 
     # 2. Scale Toggle
     scale_buttons = [
@@ -213,122 +270,78 @@ def main(data_dir='new'):
     for s_label, window in smoothing_levels.items():
         new_y_values = []
         for data_point in trace_data:
-            if not data_point['smoothed_y']:
-                new_y_values.append(None)
+            if data_point['type'] == 'box':
+                new_y_values.append(None) 
+            elif not data_point['smoothed_y']:
+                new_y_values.append([])
             else:
                 new_y_values.append(data_point['smoothed_y'][s_label])
         
-        button = dict(
-            label=s_label,
-            method="restyle",
-            args=[{"y": new_y_values}]
-        )
-        smoothing_buttons.append(button)
+        smoothing_buttons.append(dict(label=s_label, method="restyle", args=[{"y": new_y_values}]))
 
-    # 4. Zoom Sync Control (UPDATED)
-    # Now syncs BOTH X (width) and Y (height)
+    # 4. Zoom Sync
     zoom_buttons = [
+        dict(label="Sync On", method="relayout", args=[{"xaxis2.matches": "x", "yaxis2.matches": "y", "xaxis2.showticklabels": True, "yaxis2.showticklabels": True}]),
+        dict(label="Sync Off", method="relayout", args=[{"xaxis2.matches": None, "yaxis2.matches": None, "xaxis2.autorange": True, "yaxis2.autorange": True}])
+    ]
+
+    # 5. NEW: Outlier Toggle (Performance Control)
+    # This button toggles the 'boxpoints' attribute of the Box traces
+    outlier_buttons = [
         dict(
-            label="Sync On",
-            method="relayout",
-            args=[{
-                "xaxis2.matches": "x",
-                "yaxis2.matches": "y",
-                "xaxis2.showticklabels": True, # Ensure labels don't disappear
-                "yaxis2.showticklabels": True
-            }] 
+            label="Outliers: OFF (Fast)", 
+            method="restyle", 
+            args=[{"boxpoints": False}] # Hides points
         ),
         dict(
-            label="Sync Off",
-            method="relayout",
-            args=[{
-                "xaxis2.matches": None,
-                "yaxis2.matches": None,
-                "xaxis2.autorange": True, # Reset bounds on unsync
-                "yaxis2.autorange": True
-            }] 
+            label="Outliers: ON (Slow)", 
+            method="restyle", 
+            args=[{"boxpoints": "outliers"}] # Shows outlier points
         )
     ]
 
     fig.update_layout(
-        title={
-            "text": "Kinship Distribution Analysis (Threshold > 1 cM)",
-            "x": 0.5, "xanchor": "center", "font": {"size": 20}
-        },
-        hovermode="x unified",
+        hovermode="closest",
         template="plotly_white",
-        legend=dict(
-            orientation="v", yanchor="top", y=0.99, xanchor="left", x=1.01,
-            bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="#cccccc", borderwidth=1,
-            itemclick="toggleothers", itemdoubleclick="toggle"
-        ),
+        legend=dict(orientation="v", y=0.99, x=1.01, bgcolor="rgba(255,255,255,0.8)", bordercolor="#cccccc", borderwidth=1, itemclick="toggle", itemdoubleclick="toggleothers"),
         margin=dict(l=80, r=200, t=180, b=80),
         plot_bgcolor="rgba(240, 240, 240, 0.5)",
         paper_bgcolor="white",
         width=1400,
-        height=1000,
+        height=1400,
         
-        # --- DEFAULT SYNC CONFIGURATION ---
-        # Syncing both X and Y axes by default
         xaxis2=dict(matches='x'),
         yaxis2=dict(matches='y', showticklabels=True),
+        yaxis3=dict(title_text="Length (cM)"),
         
         updatemenus=[
-             # Threshold Selector
-             dict(
-                 buttons=dropdown_buttons,
-                 direction="down", pad={"r": 10, "t": 10}, showactive=True,
-                 x=0.0, xanchor="left", y=1.15, yanchor="top",
-                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
-             ),
-             # Scale Toggle
-             dict(
-                 buttons=scale_buttons,
-                 direction="right", pad={"r": 10, "t": 10}, showactive=True,
-                 x=1.0, xanchor="right", y=1.15, yanchor="top",
-                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
-             ),
-             # Smoothing Control
-             dict(
-                 buttons=smoothing_buttons,
-                 direction="right", pad={"r": 10, "t": 10}, showactive=True,
-                 x=0.45, xanchor="center", y=1.15, yanchor="top",
-                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
-             ),
-             # Zoom Sync Toggle
-             dict(
-                 buttons=zoom_buttons,
-                 direction="right", pad={"r": 10, "t": 10}, showactive=True,
-                 x=0.65, xanchor="center", y=1.15, yanchor="top",
-                 bgcolor="#ffffff", bordercolor="#cccccc", borderwidth=1
-             )
+             dict(buttons=dropdown_buttons, direction="down", showactive=True, x=0.0, xanchor="left", y=1.10, bgcolor="#ffffff"),
+             dict(buttons=scale_buttons, direction="right", showactive=True, x=1.0, xanchor="right", y=1.10, bgcolor="#ffffff"),
+             dict(buttons=smoothing_buttons, direction="right", showactive=True, x=0.35, xanchor="center", y=1.10, bgcolor="#ffffff"),
+             dict(buttons=zoom_buttons, direction="right", showactive=True, x=0.55, xanchor="center", y=1.10, bgcolor="#ffffff"),
+             # New Button: Outlier Toggle
+             dict(buttons=outlier_buttons, direction="right", showactive=True, x=0.75, xanchor="center", y=1.10, bgcolor="#ffffff")
          ]
     )
 
-    # Axis Titles
-    fig.update_xaxes(title_text="Length (centiMorgans)", showgrid=True, row=1, col=1)
-    fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=1, col=1)
-    
-    fig.update_xaxes(title_text="Length (centiMorgans)", showgrid=True, row=2, col=1)
-    fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=2, col=1)
+    # Titles and Annotations
+    for r in [1, 2]:
+        fig.update_xaxes(title_text="Length (centiMorgans)", showgrid=True, row=r, col=1)
+        fig.update_yaxes(title_text="Percentage (%)", showgrid=True, row=r, col=1)
+    fig.update_xaxes(title_text="Kinship Group", showgrid=True, row=3, col=1)
 
-    # Annotations
-    fig.add_annotation(text="<b>Select Threshold:</b>", x=0.0, y=1.20, xref="paper", yref="paper", xanchor="left", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Scale:</b>", x=1.0, y=1.20, xref="paper", yref="paper", xanchor="right", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Data Smoothing:</b>", x=0.45, y=1.20, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
-    fig.add_annotation(text="<b>Zoom Sync:</b>", x=0.65, y=1.20, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
+    fig.add_annotation(text="<b>Select Threshold:</b>", x=0.0, y=1.14, xref="paper", yref="paper", xanchor="left", showarrow=False, font=dict(size=12))
+    fig.add_annotation(text="<b>Scale:</b>", x=1.0, y=1.14, xref="paper", yref="paper", xanchor="right", showarrow=False, font=dict(size=12))
+    fig.add_annotation(text="<b>Smoothing:</b>", x=0.35, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
+    fig.add_annotation(text="<b>Zoom Sync:</b>", x=0.55, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
+    fig.add_annotation(text="<b>Outlier Data:</b>", x=0.75, y=1.14, xref="paper", yref="paper", xanchor="center", showarrow=False, font=dict(size=12))
 
     output_file = 'kinship_interactive_studio.html'
-    print(f"\nSaving interactive studio to {output_file}...")
-    fig.write_html(
-        output_file, 
-        include_plotlyjs='cdn',
-        full_html=True,
-        config=dict(responsive=True, displayModeBar=True, displaylogo=False)
-    )
+    print(f"\nSaving optimized studio to {output_file}...")
+    fig.write_html(output_file, include_plotlyjs='cdn', full_html=True, config=dict(responsive=True, displayModeBar=True, displaylogo=False))
     
     print("\n" + "="*70)
-    print("✓ SUCCESS: Interactive Studio Created!")
+    print("✓ SUCCESS: Lag Reduced & Outlier Toggle Added!")
     print("="*70 + "\n")
 
 
