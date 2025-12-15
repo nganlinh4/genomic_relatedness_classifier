@@ -26,7 +26,11 @@ def apply_moving_average(data_series: list, window: int) -> list:
 def load_percentile_file(kinship_level, threshold, data_dir='new'):
     """Load individual percentile TSV file."""
     kinship_str = str(kinship_level)
-    file_path = f'data/raw/{data_dir}/cm_over_{threshold}/percentile_{kinship_str}.tsv'
+    # Try the new structure first (percentile_outputs_only_autosomal/cm_over_X/)
+    file_path = f'data/raw/{data_dir}/percentile_outputs_only_autosomal/cm_over_{threshold}/percentile_{kinship_str}.tsv'
+    if not os.path.exists(file_path):
+        # Fall back to old structure (cm_over_X/ directly)
+        file_path = f'data/raw/{data_dir}/cm_over_{threshold}/percentile_{kinship_str}.tsv'
     if not os.path.exists(file_path):
         return None
     return pd.read_csv(file_path, sep='\t')
