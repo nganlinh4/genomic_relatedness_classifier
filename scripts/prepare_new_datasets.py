@@ -32,25 +32,32 @@ def convert_merged_tsv_to_csv(threshold, data_dir='new'):
     Uses percentile and statistical columns as features.
     """
     threshold = str(threshold)
-    input_tsv = f'data/raw/{data_dir}/merged_cm_over_{threshold}.tsv'
+    base_path = f'data/raw/{data_dir}'
+    filename = f'merged_cm_over_{threshold}.tsv'
+    input_tsv = os.path.join(base_path, filename)
     output_csv = f'data/raw/model_input_with_kinship_filtered_cM_{threshold}_percentile.csv'
     
+    # Robust path discovery: if not in root, check subdirectories
     if not os.path.exists(input_tsv):
-        print(f"Error: {input_tsv} not found")
-        return False
+        found = False
+        for root, dirs, files in os.walk(base_path):
+            if filename in files:
+                input_tsv = os.path.join(root, filename)
+                found = True
+                break
+        if not found:
+            print(f"CRITICAL ERROR: {filename} not found in {base_path} or its subdirectories.")
+            return False
     
     # Read new format
     df = pd.read_csv(input_tsv, sep='\t')
     print(f"\nLoading {input_tsv}")
     print(f"  Shape: {df.shape}")
-    print(f"  Columns: {df.columns.tolist()}")
     
     # Rename PAIR_ID to pair for compatibility
     df.rename(columns={'PAIR_ID': 'pair'}, inplace=True)
     
-    # Keep essential columns: pair, kinship, and all statistical/percentile features
-    # The percentile columns (0%, 10%, 20%... 100%) + stats (n_segment, mean, median, max, total_length)
-    # will serve as features for the model
+    # Keep essential columns
     feature_cols = ['pair', 'kinship', 'n_segment', 'mean', 'median', 'max', 'total_length']
     percentile_cols = [col for col in df.columns if col.endswith('%')]
     
@@ -86,8 +93,18 @@ def main():
     print(f"Converting TSV datasets to CSV format (source: data/raw/{args.data_dir})")
     print("=" * 70)
     
+    success = True
     for threshold in args.thresholds:
-        convert_merged_tsv_to_csv(threshold, args.data_dir)
+        if not convert_merged_tsv_to_csv(threshold, args.data_dir):
+            success = False
+    
+    if not success:
+        print("\n" + "!" * 70)
+        print("CRITICAL FAILURE: Some datasets could not be converted.")
+        print("Stopping pipeline to prevent training on stale data.")
+        print("!" * 70)
+        import sys
+        sys.exit(1)
     
     print("\n" + "=" * 70)
     print("All datasets converted successfully")
