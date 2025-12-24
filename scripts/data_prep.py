@@ -53,12 +53,25 @@ def parse_stats_file(path):
 
 def process_percentile_mode(dataset, drop_un, data_dir='new'):
     """Logic derived from data_prep_percentile.py"""
-    raw_csv = os.path.join('data', 'raw', f'model_input_with_kinship_filtered_{dataset}_percentile.csv')
+    
+    # Check for 251211 structure
+    if '251211' in data_dir:
+        # Map cM_1 -> merged_cm_over_1.tsv
+        map_name = dataset.replace('cM', 'cm_over')
+        raw_csv = os.path.join('data', 'raw', '251211', 'percentile_outputs_only_autosomal', f'merged_{map_name}.tsv')
+        sep = '\t'
+    else:
+        raw_csv = os.path.join('data', 'raw', f'model_input_with_kinship_filtered_{dataset}_percentile.csv')
+        sep = None # Auto-detect
+
     if not os.path.exists(raw_csv):
         raise FileNotFoundError(f"Percentile input file not found: {raw_csv}")
 
-    sep = None  # Auto-detect separator
     df_csv = pd.read_csv(raw_csv, sep=sep, engine='python')
+    
+    # Rename PAIR_ID to pair if needed
+    if 'PAIR_ID' in df_csv.columns:
+        df_csv.rename(columns={'PAIR_ID': 'pair'}, inplace=True)
 
     keep_cols = ['pair', 'kinship', 'n_segment', 'mean', 'median', 'max', 'total_length']
     percentile_cols = [col for col in df_csv.columns if col.endswith('%')]
@@ -141,9 +154,32 @@ def main():
         after = len(df_final)
         print(f"Dropped UN rows: {before - after} (from {before} to {after})")
 
+    # Create and save artifacts for benchmark script
+    import pickle
+    from sklearn.preprocessing import StandardScaler
+    
+    # Identify features
+    exclude = ['pair', 'kinship']
+    features = [c for c in df_final.columns if c not in exclude]
+    
+    # Save features list
+    feat_path = os.path.join('data', 'processed', f'top_features_{dataset}{scenario_suffix}.pkl')
+    with open(feat_path, 'wb') as f:
+        pickle.dump(features, f)
+    
+    # Fit and save scaler
+    scaler = StandardScaler()
+    X = df_final[features]
+    scaler.fit(X)
+    
+    scaler_path = os.path.join('data', 'processed', f'scaler_{dataset}{scenario_suffix}.pkl')
+    with open(scaler_path, 'wb') as f:
+        pickle.dump(scaler, f)
+
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     df_final.to_csv(out_csv, index=False)
-    print(f"Saved to {out_csv}")
+    print(f"Saved data to {out_csv}")
+    print(f"Saved artifacts to {feat_path} and {scaler_path}")
 
 if __name__ == '__main__':
     main()

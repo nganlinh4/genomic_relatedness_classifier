@@ -317,6 +317,56 @@ else:
 
     print("Models saved.")
 
+    # -------------------------------------------------------------------------
+    # GBDT Models (XGBoost, LightGBM, CatBoost)
+    # -------------------------------------------------------------------------
+    import joblib
+    
+    # XGBoost
+    try:
+        import xgboost as xgb
+        print("Training XGBoost...")
+        xgb_clf = xgb.XGBClassifier(n_estimators=100, max_depth=6, learning_rate=0.1, 
+                                    objective='multi:softprob', num_class=num_classes, 
+                                    n_jobs=1, verbosity=0, random_state=42, 
+                                    tree_method='hist', device=train_device_env if train_device_env=='cuda' else 'cpu')
+        xgb_clf.fit(X_train_res, y_train_res)
+        joblib.dump(xgb_clf, os.path.join(models_dir, 'xgboost.pkl'))
+    except ImportError:
+        print("XGBoost not installed, skipping.")
+
+    # LightGBM
+    try:
+        import lightgbm as lgb
+        print("Training LightGBM...")
+        # Note: LightGBM handling of 'device' parameter depends on installation (gpu version vs cpu)
+        # We'll stick to default (CPU or auto-detect) for safety unless explicitly configured, 
+        # as LGBM GPU often requires special build flags.
+        lgb_clf = lgb.LGBMClassifier(n_estimators=100, num_class=num_classes, objective='multiclass', 
+                                     n_jobs=1, verbosity=-1, random_state=42)
+        lgb_clf.fit(X_train_res, y_train_res)
+        joblib.dump(lgb_clf, os.path.join(models_dir, 'lightgbm.pkl'))
+    except ImportError:
+        print("LightGBM not installed, skipping.")
+
+    # CatBoost
+    try:
+        from catboost import CatBoostClassifier
+        print("Training CatBoost...")
+        cat_clf = CatBoostClassifier(iterations=1000, learning_rate=0.1, depth=6, 
+                                     loss_function='MultiClass', classes_count=num_classes, 
+                                     verbose=0, allow_writing_files=False, thread_count=1, random_seed=42,
+                                     task_type='GPU' if train_device_env == 'cuda' else 'CPU')
+        # CatBoost prefers its own pool if possible, but sklearn API expects array.
+        cat_clf.fit(X_train_res, y_train_res)
+        # CatBoost has its own save method, but joblib pickle works for the wrapper usually. 
+        # Better to use save_model for portability, but pickle is fine for this env.
+        # cat_clf.save_model(os.path.join(models_dir, 'catboost.cbm'))
+        joblib.dump(cat_clf, os.path.join(models_dir, 'catboost.pkl'))
+    except ImportError:
+        print("CatBoost not installed, skipping.")
+
+
 # Always record training metadata (even if only RF)
 end_time = datetime.utcnow()
 duration_sec = (end_time - start_time).total_seconds()
@@ -331,7 +381,7 @@ meta_payload = {
     'finished_utc': end_time.isoformat() + 'Z',
     'duration_seconds': duration_sec,
     'only_randomforest': args.only_randomforest,
-    'model_types_trained': [] if args.only_randomforest else ['MLP','CNN']
+    'model_types_trained': [] if args.only_randomforest else ['MLP','CNN', 'XGBoost', 'LightGBM', 'CatBoost']
 }
 import json
 with open(meta_path, 'w') as mf:

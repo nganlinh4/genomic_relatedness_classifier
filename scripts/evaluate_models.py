@@ -278,6 +278,89 @@ if mlp is not None:
 if cnn is not None:
     cnn_metrics = evaluate_model(cnn, X_val_tensor, y_val_tensor, 'cnn', f"Advanced 1D-CNN")
 
+# -------------------------------------------------------------------------
+# Evaluate GBDTs (XGBoost, LightGBM, CatBoost)
+# -------------------------------------------------------------------------
+import joblib
+
+def evaluate_sklearn_model(model, X, y, model_key, pretty_name):
+    # Sklearn models use numpy, not tensor
+    y_pred = model.predict(X)
+    if y_pred.ndim > 1:
+        y_pred = y_pred.ravel()
+    probs = model.predict_proba(X)
+    
+    # Metrics
+    acc = accuracy_score(y, y_pred)
+    f1_w = f1_score(y, y_pred, average='weighted')
+    f1_m = f1_score(y, y_pred, average='macro')
+    
+    # AUC
+    auc_w, auc_m, auc_mic = _safe_multiclass_auc(y, probs, num_classes)
+    
+    # CM
+    cm = confusion_matrix(y, y_pred)
+    print(f"\n{pretty_name} Results:")
+    print(f"Accuracy: {acc:.4f}")
+    print(f"F1-Score (weighted): {f1_w:.4f}")
+    
+    # Classification Report
+    unique_labels = np.unique(np.concatenate([y, y_pred]))
+    target_names = [str(le.classes_[i]) for i in unique_labels]
+    cls_report = classification_report(y, y_pred, labels=unique_labels, target_names=target_names, output_dict=True)
+    
+    # Plot CM
+    out_dir = os.path.join('reports', dataset, 'plots', 'confusion', scenario, imbalance_mode)
+    os.makedirs(out_dir, exist_ok=True)
+    base_name = f'confusion_matrix_{model_key}_{dataset}_{scenario}_{imbalance_mode}'
+    cm_path = os.path.join(out_dir, base_name + '.png')
+    
+    plt.figure(figsize=(11, 10))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+    plt.title(f'{pretty_name} ({dataset}/{scenario})')
+    plt.tight_layout()
+    plt.savefig(cm_path)
+    plt.close()
+
+    return {
+        'accuracy': acc,
+        'f1_weighted': f1_w,
+        'f1_macro': f1_m,
+        'auc_weighted': auc_w,
+        'auc_macro': auc_m,
+        'auc_micro': auc_mic,
+        'confusion_matrix_path': cm_path,
+        'per_class': cls_report,
+        '_probs': probs,
+        '_predicted': y_pred,
+        '_y_true': y
+    }
+
+# Load and Evaluate XGBoost
+xgb_path = os.path.join('models', dataset, scenario, imbalance_mode, 'xgboost.pkl')
+xgb_metrics = None
+if os.path.exists(xgb_path):
+    print("Evaluating XGBoost...")
+    xgb_clf = joblib.load(xgb_path)
+    xgb_metrics = evaluate_sklearn_model(xgb_clf, X_val, y_val, 'xgboost', 'XGBoost')
+
+# Load and Evaluate LightGBM
+lgb_path = os.path.join('models', dataset, scenario, imbalance_mode, 'lightgbm.pkl')
+lgb_metrics = None
+if os.path.exists(lgb_path):
+    print("Evaluating LightGBM...")
+    lgb_clf = joblib.load(lgb_path)
+    lgb_metrics = evaluate_sklearn_model(lgb_clf, X_val, y_val, 'lightgbm', 'LightGBM')
+
+# Load and Evaluate CatBoost
+cat_path = os.path.join('models', dataset, scenario, imbalance_mode, 'catboost.pkl')
+cat_metrics = None
+if os.path.exists(cat_path):
+    print("Evaluating CatBoost...")
+    cat_clf = joblib.load(cat_path)
+    cat_metrics = evaluate_sklearn_model(cat_clf, X_val, y_val, 'catboost', 'CatBoost')
+
+
 # Evaluate Random Forest baseline
 rf = RandomForestClassifier(n_estimators=100, random_state=42)
 rf_start = datetime.utcnow()
@@ -428,8 +511,16 @@ results = {
 # Populate models dict conditionally
 if mlp_metrics is not None:
     results['models']['MLP'] = mlp_metrics
-if cnn_metrics is not None:
     results['models']['CNN'] = cnn_metrics
+if xgb_metrics is not None:
+    results['models']['XGBoost'] = xgb_metrics
+    _export_probabilities('xgboost', xgb_metrics['_probs'], xgb_metrics['_predicted'], xgb_metrics['_y_true'], pair_val)
+if lgb_metrics is not None:
+    results['models']['LightGBM'] = lgb_metrics
+    _export_probabilities('lightgbm', lgb_metrics['_probs'], lgb_metrics['_predicted'], lgb_metrics['_y_true'], pair_val)
+if cat_metrics is not None:
+    results['models']['CatBoost'] = cat_metrics
+    _export_probabilities('catboost', cat_metrics['_probs'], cat_metrics['_predicted'], cat_metrics['_y_true'], pair_val)
 results['models']['RandomForest'] = rf_metrics
 
 # Compute post-sampling train counts for reporting (mirrors training policy)
