@@ -161,7 +161,7 @@ def build_markdown_en(consolidated, reports_dir):
     lines.append('<tr>'
                  '<th style="padding:2px 6px; font-size:12px;">Scenario</th>'
                  '<th style="padding:2px 6px; font-size:12px;">Mode</th>'
-                 '<th style="padding:2px 6px; font-size:12px;">Best Model</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">Model</th>'
                  '<th style="padding:2px 6px; font-size:12px;">Val N</th>'
                  '<th style="padding:2px 6px; font-size:12px;">Train N (pre→post)</th>'
                  '<th style="padding:2px 6px; font-size:12px;">Accuracy</th>'
@@ -171,6 +171,8 @@ def build_markdown_en(consolidated, reports_dir):
                  '</tr>')
     lines.append('</thead>')
     lines.append('<tbody>')
+    # Collect all results for global ranking
+    all_rows = []
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
         # Imbalance share
         vcd_any = None
@@ -180,20 +182,12 @@ def build_markdown_en(consolidated, reports_dir):
         total = sum(int(v) for v in vcd_any.values()) if vcd_any else 0
         maj = max(int(v) for v in vcd_any.values()) if vcd_any else 0
         share = (maj / total) if total else 0.0
+
         for mode_key, mb in scen.get('modes', {}).items():
-            best_key = None
-            best = None
-            for mk, metrics in mb.get('models', {}).items():
-                if metrics is None:
-                    continue
-                if best is None or (metrics.get('f1_weighted') or 0) > (best.get('f1_weighted') or 0):
-                    best = metrics
-                    best_key = mk
-            if best_key is None:
-                continue
             val_n = mb.get('val_samples')
             pre_n = mb.get('train_samples_before')
             post_n = mb.get('train_samples_after')
+            
             if mode_key == 'zero':
                 reli = "Baseline only (unreliable under imbalance)" if share >= 0.6 else "Baseline"
             elif mode_key == 'weighted':
@@ -202,19 +196,38 @@ def build_markdown_en(consolidated, reports_dir):
                 reli = "Mitigates imbalance (oversampled train)"
             else:
                 reli = "Mitigates imbalance (over+under sampling)"
-            lines.append(
-                f"<tr>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{scenario_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{mode_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{best_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{val_n}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{pre_n}→{post_n}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('accuracy'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('f1_weighted'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('auc_weighted'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{reli}</td>"
-                f"</tr>"
-            )
+
+            for model_key, metrics in mb.get('models', {}).items():
+                if metrics:
+                    all_rows.append({
+                        'scenario': scenario_key,
+                        'mode': mode_key,
+                        'model': model_key,
+                        'val_n': val_n,
+                        'pre_post': f"{pre_n}→{post_n}",
+                        'accuracy': metrics.get('accuracy'),
+                        'f1_weighted': metrics.get('f1_weighted'),
+                        'auc_weighted': metrics.get('auc_weighted'),
+                        'reli': reli
+                    })
+
+    # Sort globally by Accuracy (Consumer Preference)
+    all_rows.sort(key=lambda x: x.get('accuracy') or 0, reverse=True)
+
+    for row in all_rows:
+        lines.append(
+            f"<tr>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['scenario']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['mode']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['model']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['val_n']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['pre_post']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['accuracy'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['f1_weighted'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['auc_weighted'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['reli']}</td>"
+            f"</tr>"
+        )
 
     lines.append('</tbody>')
     lines.append('</table>')
@@ -491,7 +504,7 @@ def build_markdown_kr(consolidated, reports_dir):
     lines.append('<tr>'
                  '<th style="padding:2px 6px; font-size:12px;">시나리오</th>'
                  '<th style="padding:2px 6px; font-size:12px;">모드</th>'
-                 '<th style="padding:2px 6px; font-size:12px;">최고 모델</th>'
+                 '<th style="padding:2px 6px; font-size:12px;">모델</th>'
                  '<th style="padding:2px 6px; font-size:12px;">검증 N</th>'
                  '<th style="padding:2px 6px; font-size:12px;">학습 N (전→후)</th>'
                  '<th style="padding:2px 6px; font-size:12px;">정확도</th>'
@@ -501,6 +514,8 @@ def build_markdown_kr(consolidated, reports_dir):
                  '</tr>')
     lines.append('</thead>')
     lines.append('<tbody>')
+    # Collect all results for global ranking
+    all_rows = []
     for scenario_key, scen in consolidated.get('scenarios', {}).items():
         vcd_any = None
         if scen['modes']:
@@ -509,20 +524,12 @@ def build_markdown_kr(consolidated, reports_dir):
         total = sum(int(v) for v in vcd_any.values()) if vcd_any else 0
         maj = max(int(v) for v in vcd_any.values()) if vcd_any else 0
         share = (maj / total) if total else 0.0
+
         for mode_key, mb in scen.get('modes', {}).items():
-            best_key = None
-            best = None
-            for mk, metrics in mb.get('models', {}).items():
-                if metrics is None:
-                    continue
-                if best is None or (metrics.get('f1_weighted') or 0) > (best.get('f1_weighted') or 0):
-                    best = metrics
-                    best_key = mk
-            if best_key is None:
-                continue
             val_n = mb.get('val_samples')
             pre_n = mb.get('train_samples_before')
             post_n = mb.get('train_samples_after')
+            
             if mode_key == 'zero':
                 reli = "기준선(불균형 시 신뢰 낮음)" if share >= 0.6 else "기준선"
             elif mode_key == 'weighted':
@@ -531,19 +538,38 @@ def build_markdown_kr(consolidated, reports_dir):
                 reli = "불균형 완화(SMOTE 과샘플링)"
             else:
                 reli = "불균형 완화(과샘플+언더샘플)"
-            lines.append(
-                f"<tr>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{scenario_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{mode_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{best_key}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{val_n}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{pre_n}→{post_n}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('accuracy'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('f1_weighted'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(best.get('auc_weighted'))}</td>"
-                f"<td style='padding:2px 6px; font-size:12px;'>{reli}</td>"
-                f"</tr>"
-            )
+
+            for model_key, metrics in mb.get('models', {}).items():
+                if metrics:
+                    all_rows.append({
+                        'scenario': scenario_key,
+                        'mode': mode_key,
+                        'model': model_key,
+                        'val_n': val_n,
+                        'pre_post': f"{pre_n}→{post_n}",
+                        'accuracy': metrics.get('accuracy'),
+                        'f1_weighted': metrics.get('f1_weighted'),
+                        'auc_weighted': metrics.get('auc_weighted'),
+                        'reli': reli
+                    })
+
+    # Sort globally by Accuracy (Consumer Preference)
+    all_rows.sort(key=lambda x: x.get('accuracy') or 0, reverse=True)
+
+    for row in all_rows:
+        lines.append(
+            f"<tr>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['scenario']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['mode']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['model']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['val_n']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['pre_post']}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['accuracy'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['f1_weighted'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{_fmt(row['auc_weighted'])}</td>"
+            f"<td style='padding:2px 6px; font-size:12px;'>{row['reli']}</td>"
+            f"</tr>"
+        )
 
     # Scenario plots
     lines.append('</tbody>')
